@@ -68,14 +68,17 @@ function TableDetail() {
     }
     const ns = nextStatus(table.status);
     if (!ns) return;
-    const patch: Record<string, unknown> = {
-      status: ns,
-      assigned_to: table.assigned_to ?? user?.id ?? null,
-    };
-    if (ns === "fish_delivered") patch.fish_delivered_at = new Date().toISOString();
-    if (ns === "bottle_arrived") patch.bottle_arrived_at = new Date().toISOString();
-    if (ns === "closed") patch.closed_at = new Date().toISOString();
-    const { error } = await supabase.from("club_tables").update(patch).eq("id", id);
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("club_tables")
+      .update({
+        status: ns,
+        assigned_to: table.assigned_to ?? user?.id ?? null,
+        ...(ns === "fish_delivered" ? { fish_delivered_at: now } : {}),
+        ...(ns === "bottle_arrived" ? { bottle_arrived_at: now } : {}),
+        ...(ns === "closed" ? { closed_at: now } : {}),
+      })
+      .eq("id", id);
     if (error) toast.error(error.message);
   };
 

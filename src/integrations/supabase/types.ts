@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      alerts: {
+        Row: {
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["alert_kind"]
+          message: string | null
+          resolved_at: string | null
+          table_id: string | null
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["alert_kind"]
+          message?: string | null
+          resolved_at?: string | null
+          table_id?: string | null
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["alert_kind"]
+          message?: string | null
+          resolved_at?: string | null
+          table_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "club_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bottles: {
         Row: {
           created_at: string
@@ -39,6 +80,7 @@ export type Database = {
         Row: {
           assigned_to: string | null
           bottle_arrived_at: string | null
+          bottle_waiting_at: string | null
           check_in_at: string | null
           closed_at: string | null
           created_at: string
@@ -57,6 +99,7 @@ export type Database = {
         Insert: {
           assigned_to?: string | null
           bottle_arrived_at?: string | null
+          bottle_waiting_at?: string | null
           check_in_at?: string | null
           closed_at?: string | null
           created_at?: string
@@ -75,6 +118,7 @@ export type Database = {
         Update: {
           assigned_to?: string | null
           bottle_arrived_at?: string | null
+          bottle_waiting_at?: string | null
           check_in_at?: string | null
           closed_at?: string | null
           created_at?: string
@@ -177,6 +221,7 @@ export type Database = {
       }
     }
     Enums: {
+      alert_kind: "whatsapp_msg" | "bottle_late" | "help_needed"
       app_role: "admin" | "staff"
       payment_method: "cash" | "pos"
       table_status:
@@ -316,6 +361,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      alert_kind: ["whatsapp_msg", "bottle_late", "help_needed"],
       app_role: ["admin", "staff"],
       payment_method: ["cash", "pos"],
       table_status: [

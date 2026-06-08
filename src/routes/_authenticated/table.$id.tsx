@@ -178,6 +178,14 @@ function TableDetail() {
             <p className="font-mono mt-1">{table.whatsapp}</p>
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={callHelp}
+          className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2"
+        >
+          <HandMetal className="w-5 h-5" /> Chiedi aiuto allo staff
+        </button>
       </main>
 
       {/* CTA Avanza stato */}

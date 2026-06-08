@@ -1,0 +1,159 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { MessageCircle, AlarmClock, HandMetal, Check } from "lucide-react";
+import { toast } from "sonner";
+
+export type AlertKind = "whatsapp_msg" | "bottle_late" | "help_needed";
+
+export interface AlertRow {
+  id: string;
+  table_id: string | null;
+  kind: AlertKind;
+  message: string | null;
+  claimed_by: string | null;
+  claimed_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+interface Props {
+  userId: string | undefined;
+  tablesIndex: Record<string, string>; // id -> ref_name
+}
+
+const KIND_META: Record<AlertKind, { label: string; Icon: typeof MessageCircle; tone: string }> = {
+  whatsapp_msg: { label: "WhatsApp", Icon: MessageCircle, tone: "bg-primary text-primary-foreground" },
+  bottle_late: { label: "Bottiglia in ritardo", Icon: AlarmClock, tone: "bg-destructive text-destructive-foreground" },
+  help_needed: { label: "Serve aiuto", Icon: HandMetal, tone: "bg-warning text-warning-foreground" },
+};
+
+export function AlertsBanner({ userId, tablesIndex }: Props) {
+  const [alerts, setAlerts] = useState<AlertRow[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const { data } = await supabase
+        .from("alerts" as never)
+        .select("*")
+        .is("resolved_at", null)
+        .order("created_at", { ascending: false });
+      if (!mounted) return;
+      setAlerts((data ?? []) as unknown as AlertRow[]);
+    };
+    load();
+
+    const channel = supabase
+      .channel("alerts")
+      .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, (payload) => {
+        setAlerts((prev) => {
+          if (payload.eventType === "INSERT") {
+            const row = payload.new as unknown as AlertRow;
+            if (row.resolved_at) return prev;
+            const exists = prev.some((a) => a.id === row.id);
+            if (!exists) {
+              const tableName = row.table_id ? tablesIndex[row.table_id] : null;
+              toast(`${KIND_META[row.kind].label}${tableName ? ` · ${tableName}` : ""}`, {
+                description: row.message ?? undefined,
+              });
+            }
+            return exists ? prev : [row, ...prev];
+          }
+          if (payload.eventType === "UPDATE") {
+            const row = payload.new as unknown as AlertRow;
+            if (row.resolved_at) return prev.filter((a) => a.id !== row.id);
+            return prev.map((a) => (a.id === row.id ? row : a));
+          }
+          if (payload.eventType === "DELETE") {
+            return prev.filter((a) => a.id !== (payload.old as { id: string }).id);
+          }
+          return prev;
+        });
+      })
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const claim = async (a: AlertRow) => {
+    if (!userId) return;
+    const updates: Record<string, unknown> = {
+      claimed_by: userId,
+      claimed_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from("alerts" as never).update(updates as never).eq("id", a.id);
+    if (error) return toast.error(error.message);
+    // Se è collegato a un tavolo, assegna anche il tavolo
+    if (a.table_id) {
+      await supabase.from("club_tables").update({ assigned_to: userId }).eq("id", a.table_id);
+    }
+    toast.success("Preso in carico");
+  };
+
+  const resolve = async (a: AlertRow) => {
+    const { error } = await supabase
+      .from("alerts" as never)
+      .update({ resolved_at: new Date().toISOString() } as never)
+      .eq("id", a.id);
+    if (error) return toast.error(error.message);
+  };
+
+  if (alerts.length === 0) return null;
+
+  return (
+    <div className="sticky top-[112px] z-10 px-4 pt-2 pb-1 space-y-2">
+      {alerts.map((a) => {
+        const meta = KIND_META[a.kind];
+        const tableName = a.table_id ? tablesIndex[a.table_id] : null;
+        const claimed = !!a.claimed_by;
+        const mine = a.claimed_by === userId;
+        return (
+          <div
+            key={a.id}
+            className={`rounded-2xl border-2 p-3 ${claimed ? "border-success/60 bg-success/10" : "border-destructive bg-destructive/15 animate-pulse"}`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-xl grid place-items-center ${meta.tone}`}>
+                <meta.Icon className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-black">
+                  {meta.label}
+                  {tableName && <span className="text-foreground"> · {tableName}</span>}
+                </div>
+                {a.message && (
+                  <div className="text-xs text-muted-foreground truncate">{a.message}</div>
+                )}
+              </div>
+            </div>
+            <div className="mt-2 flex gap-2">
+              {!claimed ? (
+                <button
+                  onClick={() => claim(a)}
+                  className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-black text-sm"
+                >
+                  PRENDO IO
+                </button>
+              ) : (
+                <span className={`flex-1 h-11 grid place-items-center rounded-xl text-xs font-bold ${mine ? "bg-success text-success-foreground" : "bg-secondary text-muted-foreground"}`}>
+                  {mine ? "Tuo" : "Preso da altri"}
+                </span>
+              )}
+              <button
+                onClick={() => resolve(a)}
+                aria-label="Risolvi"
+                className="h-11 w-11 grid place-items-center rounded-xl bg-secondary"
+              >
+                <Check className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

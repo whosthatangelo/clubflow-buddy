@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRole } from "@/hooks/use-role";
 import { STATUS_LABEL, STATUS_ORDER, nextStatus, type TableStatus } from "@/lib/status";
 import { calculateCheckin, type Bottle as BottleT } from "@/lib/bottle-calc";
-import { ArrowLeft, Minus, Plus, Check, Banknote, CreditCard } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Check, Banknote, CreditCard, HandMetal } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/table/$id")({
@@ -75,11 +75,31 @@ function TableDetail() {
         status: ns,
         assigned_to: table.assigned_to ?? user?.id ?? null,
         ...(ns === "fish_delivered" ? { fish_delivered_at: now } : {}),
+        ...(ns === "bottle_waiting" ? { bottle_waiting_at: now } : {}),
         ...(ns === "bottle_arrived" ? { bottle_arrived_at: now } : {}),
         ...(ns === "closed" ? { closed_at: now } : {}),
       })
       .eq("id", id);
     if (error) toast.error(error.message);
+
+    // Risolvi gli alert aperti per questo tavolo quando avanza
+    if (ns === "bottle_arrived" || ns === "closed") {
+      await supabase
+        .from("alerts" as never)
+        .update({ resolved_at: now } as never)
+        .eq("table_id", id)
+        .is("resolved_at", null);
+    }
+  };
+
+  const callHelp = async () => {
+    const { error } = await supabase.from("alerts" as never).insert({
+      kind: "help_needed",
+      table_id: id,
+      message: `Serve aiuto al tavolo ${table?.ref_name ?? ""}`.trim(),
+    } as never);
+    if (error) return toast.error(error.message);
+    toast.success("Alert inviato allo staff");
   };
 
   if (loading) return <p className="p-6 text-muted-foreground">Caricamento…</p>;
@@ -158,6 +178,14 @@ function TableDetail() {
             <p className="font-mono mt-1">{table.whatsapp}</p>
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={callHelp}
+          className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2"
+        >
+          <HandMetal className="w-5 h-5" /> Chiedi aiuto allo staff
+        </button>
       </main>
 
       {/* CTA Avanza stato */}

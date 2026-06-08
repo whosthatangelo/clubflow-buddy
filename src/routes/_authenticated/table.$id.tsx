@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRole } from "@/hooks/use-role";
 import { STATUS_LABEL, STATUS_ORDER, nextStatus, type TableStatus } from "@/lib/status";
 import { calculateCheckin, type Bottle as BottleT } from "@/lib/bottle-calc";
-import { ArrowLeft, Minus, Plus, Check, Banknote, CreditCard } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Check, Banknote, CreditCard, HandMetal } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/table/$id")({

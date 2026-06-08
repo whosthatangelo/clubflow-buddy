@@ -1,10 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRole } from "@/hooks/use-role";
 import { STATUS_LABEL, type TableStatus } from "@/lib/status";
-import { LogOut, Settings, Users } from "lucide-react";
+import { LogOut, Settings, Users, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { AlertsBanner } from "@/components/AlertsBanner";
 
 export const Route = createFileRoute("/_authenticated/board")({
   component: BoardPage,
@@ -20,6 +21,7 @@ interface ClubTable {
   assigned_to: string | null;
   total_amount: number | null;
   payment_method: "cash" | "pos" | null;
+  bottle_waiting_at: string | null;
 }
 
 const STATUS_COLOR: Record<TableStatus, string> = {
@@ -34,6 +36,8 @@ const STATUS_COLOR: Record<TableStatus, string> = {
   closed: "bg-secondary text-muted-foreground",
 };
 
+const BOTTLE_TIMEOUT_MS = 15 * 60 * 1000;
+
 function BoardPage() {
   const { isAdmin, user } = useRole();
   const navigate = useNavigate();
@@ -41,6 +45,8 @@ function BoardPage() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "open">("all");
+  const [now, setNow] = useState(() => Date.now());
+  const lateAlertsCreated = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let mounted = true;
@@ -70,14 +76,51 @@ function BoardPage() {
       })
       .subscribe();
 
+    const tick = setInterval(() => setNow(Date.now()), 15000);
+
     return () => {
       mounted = false;
       supabase.removeChannel(channel);
+      clearInterval(tick);
     };
   }, []);
 
+  // Auto-crea alert bottle_late quando timer >= 15 min
+  useEffect(() => {
+    if (!user) return;
+    const late = tables.filter(
+      (t) =>
+        t.status === "bottle_waiting" &&
+        t.bottle_waiting_at &&
+        now - new Date(t.bottle_waiting_at).getTime() >= BOTTLE_TIMEOUT_MS &&
+        !lateAlertsCreated.current.has(t.id),
+    );
+    if (late.length === 0) return;
+    late.forEach(async (t) => {
+      lateAlertsCreated.current.add(t.id);
+      // Verifica se esiste già un alert aperto
+      const { data: existing } = await supabase
+        .from("alerts" as never)
+        .select("id")
+        .eq("table_id", t.id)
+        .eq("kind", "bottle_late")
+        .is("resolved_at", null)
+        .limit(1);
+      if (existing && existing.length > 0) return;
+      await supabase.from("alerts" as never).insert({
+        table_id: t.id,
+        kind: "bottle_late",
+        message: `Bottiglia in attesa da oltre 15 min`,
+      } as never);
+    });
+  }, [tables, now, user]);
+
   const zoneById = (id: string | null) => zones.find((z) => z.id === id);
   const visible = filter === "open" ? tables.filter((t) => t.status !== "closed") : tables;
+  const tablesIndex = useMemo(
+    () => Object.fromEntries(tables.map((t) => [t.id, t.ref_name])),
+    [tables],
+  );
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -86,7 +129,6 @@ function BoardPage() {
 
   return (
     <div className="min-h-screen pb-24">
-      {/* Top bar */}
       <header className="sticky top-0 z-20 backdrop-blur bg-background/85 border-b border-border">
         <div className="px-4 py-3 flex items-center justify-between gap-2">
           <div>
@@ -136,6 +178,8 @@ function BoardPage() {
         </div>
       </header>
 
+      <AlertsBanner userId={user?.id} tablesIndex={tablesIndex} />
+
       <main className="p-4">
         {loading ? (
           <p className="text-center text-muted-foreground py-12">Caricamento…</p>
@@ -146,12 +190,16 @@ function BoardPage() {
             {visible.map((t) => {
               const z = zoneById(t.zone_id);
               const isMine = t.assigned_to === user?.id;
+              const waiting = t.status === "bottle_waiting" && t.bottle_waiting_at;
+              const waitedMs = waiting ? now - new Date(t.bottle_waiting_at!).getTime() : 0;
+              const waitedMin = Math.floor(waitedMs / 60000);
+              const late = waitedMs >= BOTTLE_TIMEOUT_MS;
               return (
                 <Link
                   key={t.id}
                   to="/table/$id"
                   params={{ id: t.id }}
-                  className="block rounded-2xl bg-card border border-border p-4 active:scale-[0.98] transition-transform"
+                  className={`block rounded-2xl bg-card border p-4 active:scale-[0.98] transition-transform ${late ? "border-destructive" : "border-border"}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -169,9 +217,16 @@ function BoardPage() {
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${STATUS_COLOR[t.status]}`}>
                       {STATUS_LABEL[t.status]}
                     </span>
-                    {isMine && (
-                      <span className="text-[10px] uppercase tracking-wide font-bold text-primary">Tuo</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {waiting && (
+                        <span className={`inline-flex items-center gap-1 text-xs font-bold tabular-nums ${late ? "text-destructive" : "text-warning"}`}>
+                          <Clock className="w-3.5 h-3.5" /> {waitedMin}′
+                        </span>
+                      )}
+                      {isMine && (
+                        <span className="text-[10px] uppercase tracking-wide font-bold text-primary">Tuo</span>
+                      )}
+                    </div>
                   </div>
                 </Link>
               );
@@ -201,21 +256,6 @@ function EmptyState({ isAdmin }: { isAdmin: boolean }) {
           Vai alla configurazione
         </Link>
       )}
-      {!isAdmin && (() => {
-        void supabase; // noop
-        return null;
-      })()}
-      <div className="mt-6">
-        <button
-          onClick={async () => {
-            await supabase.auth.signOut();
-            toast.success("Disconnesso");
-          }}
-          className="text-xs text-muted-foreground underline"
-        >
-          Esci
-        </button>
-      </div>
     </div>
   );
 }

@@ -75,11 +75,31 @@ function TableDetail() {
         status: ns,
         assigned_to: table.assigned_to ?? user?.id ?? null,
         ...(ns === "fish_delivered" ? { fish_delivered_at: now } : {}),
+        ...(ns === "bottle_waiting" ? { bottle_waiting_at: now } : {}),
         ...(ns === "bottle_arrived" ? { bottle_arrived_at: now } : {}),
         ...(ns === "closed" ? { closed_at: now } : {}),
       })
       .eq("id", id);
     if (error) toast.error(error.message);
+
+    // Risolvi gli alert aperti per questo tavolo quando avanza
+    if (ns === "bottle_arrived" || ns === "closed") {
+      await supabase
+        .from("alerts" as never)
+        .update({ resolved_at: now } as never)
+        .eq("table_id", id)
+        .is("resolved_at", null);
+    }
+  };
+
+  const callHelp = async () => {
+    const { error } = await supabase.from("alerts" as never).insert({
+      kind: "help_needed",
+      table_id: id,
+      message: `Serve aiuto al tavolo ${table?.ref_name ?? ""}`.trim(),
+    } as never);
+    if (error) return toast.error(error.message);
+    toast.success("Alert inviato allo staff");
   };
 
   if (loading) return <p className="p-6 text-muted-foreground">Caricamento…</p>;

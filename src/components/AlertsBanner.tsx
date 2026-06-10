@@ -7,6 +7,7 @@ export type AlertKind = "whatsapp_msg" | "bottle_late" | "help_needed";
 
 export interface AlertRow {
   id: string;
+  team_id: string;
   table_id: string | null;
   kind: AlertKind;
   message: string | null;
@@ -18,7 +19,8 @@ export interface AlertRow {
 
 interface Props {
   userId: string | undefined;
-  tablesIndex: Record<string, string>; // id -> ref_name
+  teamId: string | null;
+  tablesIndex: Record<string, string>;
 }
 
 const KIND_META: Record<AlertKind, { label: string; Icon: typeof MessageCircle; tone: string }> = {
@@ -27,49 +29,55 @@ const KIND_META: Record<AlertKind, { label: string; Icon: typeof MessageCircle; 
   help_needed: { label: "Serve aiuto", Icon: HandMetal, tone: "bg-warning text-warning-foreground" },
 };
 
-export function AlertsBanner({ userId, tablesIndex }: Props) {
+export function AlertsBanner({ userId, teamId, tablesIndex }: Props) {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
 
   useEffect(() => {
+    if (!teamId) return;
     let mounted = true;
     const load = async () => {
       const { data } = await supabase
-        .from("alerts" as never)
+        .from("alerts")
         .select("*")
+        .eq("team_id", teamId)
         .is("resolved_at", null)
         .order("created_at", { ascending: false });
       if (!mounted) return;
-      setAlerts((data ?? []) as unknown as AlertRow[]);
+      setAlerts((data ?? []) as AlertRow[]);
     };
     load();
 
     const channel = supabase
-      .channel("alerts")
-      .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, (payload) => {
-        setAlerts((prev) => {
-          if (payload.eventType === "INSERT") {
-            const row = payload.new as unknown as AlertRow;
-            if (row.resolved_at) return prev;
-            const exists = prev.some((a) => a.id === row.id);
-            if (!exists) {
-              const tableName = row.table_id ? tablesIndex[row.table_id] : null;
-              toast(`${KIND_META[row.kind].label}${tableName ? ` · ${tableName}` : ""}`, {
-                description: row.message ?? undefined,
-              });
+      .channel(`alerts-${teamId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "alerts", filter: `team_id=eq.${teamId}` },
+        (payload) => {
+          setAlerts((prev) => {
+            if (payload.eventType === "INSERT") {
+              const row = payload.new as AlertRow;
+              if (row.resolved_at) return prev;
+              const exists = prev.some((a) => a.id === row.id);
+              if (!exists) {
+                const tableName = row.table_id ? tablesIndex[row.table_id] : null;
+                toast(`${KIND_META[row.kind].label}${tableName ? ` · ${tableName}` : ""}`, {
+                  description: row.message ?? undefined,
+                });
+              }
+              return exists ? prev : [row, ...prev];
             }
-            return exists ? prev : [row, ...prev];
-          }
-          if (payload.eventType === "UPDATE") {
-            const row = payload.new as unknown as AlertRow;
-            if (row.resolved_at) return prev.filter((a) => a.id !== row.id);
-            return prev.map((a) => (a.id === row.id ? row : a));
-          }
-          if (payload.eventType === "DELETE") {
-            return prev.filter((a) => a.id !== (payload.old as { id: string }).id);
-          }
-          return prev;
-        });
-      })
+            if (payload.eventType === "UPDATE") {
+              const row = payload.new as AlertRow;
+              if (row.resolved_at) return prev.filter((a) => a.id !== row.id);
+              return prev.map((a) => (a.id === row.id ? row : a));
+            }
+            if (payload.eventType === "DELETE") {
+              return prev.filter((a) => a.id !== (payload.old as { id: string }).id);
+            }
+            return prev;
+          });
+        },
+      )
       .subscribe();
 
     return () => {
@@ -77,17 +85,15 @@ export function AlertsBanner({ userId, tablesIndex }: Props) {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [teamId]);
 
   const claim = async (a: AlertRow) => {
     if (!userId) return;
-    const updates: Record<string, unknown> = {
-      claimed_by: userId,
-      claimed_at: new Date().toISOString(),
-    };
-    const { error } = await supabase.from("alerts" as never).update(updates as never).eq("id", a.id);
+    const { error } = await supabase
+      .from("alerts")
+      .update({ claimed_by: userId, claimed_at: new Date().toISOString() })
+      .eq("id", a.id);
     if (error) return toast.error(error.message);
-    // Se è collegato a un tavolo, assegna anche il tavolo
     if (a.table_id) {
       await supabase.from("club_tables").update({ assigned_to: userId }).eq("id", a.table_id);
     }
@@ -96,8 +102,8 @@ export function AlertsBanner({ userId, tablesIndex }: Props) {
 
   const resolve = async (a: AlertRow) => {
     const { error } = await supabase
-      .from("alerts" as never)
-      .update({ resolved_at: new Date().toISOString() } as never)
+      .from("alerts")
+      .update({ resolved_at: new Date().toISOString() })
       .eq("id", a.id);
     if (error) return toast.error(error.message);
   };

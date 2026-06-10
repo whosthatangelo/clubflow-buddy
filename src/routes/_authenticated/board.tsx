@@ -1,10 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useRole } from "@/hooks/use-role";
+import { useCurrentTeam } from "@/hooks/use-current-team";
 import { STATUS_LABEL, type TableStatus } from "@/lib/status";
 import { LogOut, Settings, Users, Clock } from "lucide-react";
-import { toast } from "sonner";
 import { AlertsBanner } from "@/components/AlertsBanner";
 
 export const Route = createFileRoute("/_authenticated/board")({
@@ -22,6 +21,7 @@ interface ClubTable {
   total_amount: number | null;
   payment_method: "cash" | "pos" | null;
   bottle_waiting_at: string | null;
+  team_id: string;
 }
 
 const STATUS_COLOR: Record<TableStatus, string> = {
@@ -39,7 +39,7 @@ const STATUS_COLOR: Record<TableStatus, string> = {
 const BOTTLE_TIMEOUT_MS = 15 * 60 * 1000;
 
 function BoardPage() {
-  const { isAdmin, user } = useRole();
+  const { isAdmin, user, teamId, teamName, status: teamStatus } = useCurrentTeam();
   const navigate = useNavigate();
   const [tables, setTables] = useState<ClubTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -49,11 +49,12 @@ function BoardPage() {
   const lateAlertsCreated = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    if (!teamId) return;
     let mounted = true;
     const load = async () => {
       const [{ data: t }, { data: z }] = await Promise.all([
-        supabase.from("club_tables").select("*").order("created_at"),
-        supabase.from("zones").select("*").order("name"),
+        supabase.from("club_tables").select("*").eq("team_id", teamId).order("created_at"),
+        supabase.from("zones").select("*").eq("team_id", teamId).order("name"),
       ]);
       if (!mounted) return;
       setTables((t ?? []) as ClubTable[]);
@@ -63,17 +64,21 @@ function BoardPage() {
     load();
 
     const channel = supabase
-      .channel("board")
-      .on("postgres_changes", { event: "*", schema: "public", table: "club_tables" }, (payload) => {
-        setTables((prev) => {
-          if (payload.eventType === "INSERT") return [...prev, payload.new as ClubTable];
-          if (payload.eventType === "DELETE") return prev.filter((r) => r.id !== (payload.old as ClubTable).id);
-          if (payload.eventType === "UPDATE") {
-            return prev.map((r) => (r.id === (payload.new as ClubTable).id ? (payload.new as ClubTable) : r));
-          }
-          return prev;
-        });
-      })
+      .channel(`board-${teamId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "club_tables", filter: `team_id=eq.${teamId}` },
+        (payload) => {
+          setTables((prev) => {
+            if (payload.eventType === "INSERT") return [...prev, payload.new as ClubTable];
+            if (payload.eventType === "DELETE")
+              return prev.filter((r) => r.id !== (payload.old as ClubTable).id);
+            if (payload.eventType === "UPDATE")
+              return prev.map((r) => (r.id === (payload.new as ClubTable).id ? (payload.new as ClubTable) : r));
+            return prev;
+          });
+        },
+      )
       .subscribe();
 
     const tick = setInterval(() => setNow(Date.now()), 15000);
@@ -83,11 +88,10 @@ function BoardPage() {
       supabase.removeChannel(channel);
       clearInterval(tick);
     };
-  }, []);
+  }, [teamId]);
 
-  // Auto-crea alert bottle_late quando timer >= 15 min
   useEffect(() => {
-    if (!user) return;
+    if (!user || !teamId) return;
     const late = tables.filter(
       (t) =>
         t.status === "bottle_waiting" &&
@@ -98,22 +102,22 @@ function BoardPage() {
     if (late.length === 0) return;
     late.forEach(async (t) => {
       lateAlertsCreated.current.add(t.id);
-      // Verifica se esiste già un alert aperto
       const { data: existing } = await supabase
-        .from("alerts" as never)
+        .from("alerts")
         .select("id")
         .eq("table_id", t.id)
         .eq("kind", "bottle_late")
         .is("resolved_at", null)
         .limit(1);
       if (existing && existing.length > 0) return;
-      await supabase.from("alerts" as never).insert({
+      await supabase.from("alerts").insert({
+        team_id: teamId,
         table_id: t.id,
         kind: "bottle_late",
-        message: `Bottiglia in attesa da oltre 15 min`,
-      } as never);
+        message: "Bottiglia in attesa da oltre 15 min",
+      });
     });
-  }, [tables, now, user]);
+  }, [tables, now, user, teamId]);
 
   const zoneById = (id: string | null) => zones.find((z) => z.id === id);
   const visible = filter === "open" ? tables.filter((t) => t.status !== "closed") : tables;
@@ -127,19 +131,23 @@ function BoardPage() {
     navigate({ to: "/auth" });
   };
 
+  if (teamStatus === "loading") {
+    return <p className="p-6 text-muted-foreground">Caricamento…</p>;
+  }
+
   return (
     <div className="min-h-screen pb-24">
       <header className="sticky top-0 z-20 backdrop-blur bg-background/85 border-b border-border">
         <div className="px-4 py-3 flex items-center justify-between gap-2">
-          <div>
-            <h1 className="text-xl font-black tracking-tight">
-              Table<span className="text-primary">Flow</span>
+          <div className="min-w-0">
+            <h1 className="text-xl font-black tracking-tight truncate">
+              {teamName ?? <>Table<span className="text-primary">Flow</span></>}
             </h1>
             <p className="text-xs text-muted-foreground -mt-0.5">
               {isAdmin ? "Admin" : "Staff"} · {tables.filter((t) => t.status !== "closed").length} aperti
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {isAdmin && (
               <Link
                 to="/config"
@@ -149,6 +157,13 @@ function BoardPage() {
                 <Settings className="w-5 h-5" />
               </Link>
             )}
+            <Link
+              to="/settings/team"
+              aria-label="Impostazioni"
+              className="h-11 w-11 grid place-items-center rounded-xl bg-secondary text-foreground"
+            >
+              <Users className="w-5 h-5" />
+            </Link>
             <button
               type="button"
               onClick={signOut}
@@ -178,7 +193,7 @@ function BoardPage() {
         </div>
       </header>
 
-      <AlertsBanner userId={user?.id} tablesIndex={tablesIndex} />
+      <AlertsBanner userId={user?.id} teamId={teamId} tablesIndex={tablesIndex} />
 
       <main className="p-4">
         {loading ? (

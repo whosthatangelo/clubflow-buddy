@@ -12,9 +12,16 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedConfigRouteImport } from './routes/_authenticated/config'
 import { Route as AuthenticatedBoardRouteImport } from './routes/_authenticated/board'
+import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
 import { Route as AuthenticatedTableIdRouteImport } from './routes/_authenticated/table.$id'
+import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_authenticated/settings.whatsapp'
+import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings.team'
+import { Route as ApiPublicWebhookWhatsappRouteImport } from './routes/api/public/webhook.whatsapp'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -30,6 +37,21 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedConfigRoute = AuthenticatedConfigRouteImport.update({
   id: '/config',
   path: '/config',
@@ -40,25 +62,62 @@ const AuthenticatedBoardRoute = AuthenticatedBoardRouteImport.update({
   path: '/board',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSettingsIndexRoute =
+  AuthenticatedSettingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedTableIdRoute = AuthenticatedTableIdRouteImport.update({
   id: '/table/$id',
   path: '/table/$id',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSettingsWhatsappRoute =
+  AuthenticatedSettingsWhatsappRouteImport.update({
+    id: '/whatsapp',
+    path: '/whatsapp',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const AuthenticatedSettingsTeamRoute =
+  AuthenticatedSettingsTeamRouteImport.update({
+    id: '/team',
+    path: '/team',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const ApiPublicWebhookWhatsappRoute =
+  ApiPublicWebhookWhatsappRouteImport.update({
+    id: '/api/public/webhook/whatsapp',
+    path: '/api/public/webhook/whatsapp',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/board': typeof AuthenticatedBoardRoute
   '/config': typeof AuthenticatedConfigRoute
+  '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/invite/$token': typeof InviteTokenRoute
+  '/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/table/$id': typeof AuthenticatedTableIdRoute
+  '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/api/public/webhook/whatsapp': typeof ApiPublicWebhookWhatsappRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/board': typeof AuthenticatedBoardRoute
   '/config': typeof AuthenticatedConfigRoute
+  '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/table/$id': typeof AuthenticatedTableIdRoute
+  '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/api/public/webhook/whatsapp': typeof ApiPublicWebhookWhatsappRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -67,13 +126,43 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/board': typeof AuthenticatedBoardRoute
   '/_authenticated/config': typeof AuthenticatedConfigRoute
+  '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/invite/$token': typeof InviteTokenRoute
+  '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/_authenticated/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/_authenticated/table/$id': typeof AuthenticatedTableIdRoute
+  '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/api/public/webhook/whatsapp': typeof ApiPublicWebhookWhatsappRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/board' | '/config' | '/table/$id'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/board'
+    | '/config'
+    | '/onboarding'
+    | '/settings'
+    | '/invite/$token'
+    | '/settings/team'
+    | '/settings/whatsapp'
+    | '/table/$id'
+    | '/settings/'
+    | '/api/public/webhook/whatsapp'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/board' | '/config' | '/table/$id'
+  to:
+    | '/'
+    | '/auth'
+    | '/board'
+    | '/config'
+    | '/onboarding'
+    | '/invite/$token'
+    | '/settings/team'
+    | '/settings/whatsapp'
+    | '/table/$id'
+    | '/settings'
+    | '/api/public/webhook/whatsapp'
   id:
     | '__root__'
     | '/'
@@ -81,13 +170,22 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/board'
     | '/_authenticated/config'
+    | '/_authenticated/onboarding'
+    | '/_authenticated/settings'
+    | '/invite/$token'
+    | '/_authenticated/settings/team'
+    | '/_authenticated/settings/whatsapp'
     | '/_authenticated/table/$id'
+    | '/_authenticated/settings/'
+    | '/api/public/webhook/whatsapp'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  InviteTokenRoute: typeof InviteTokenRoute
+  ApiPublicWebhookWhatsappRoute: typeof ApiPublicWebhookWhatsappRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -113,6 +211,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/onboarding': {
+      id: '/_authenticated/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/config': {
       id: '/_authenticated/config'
       path: '/config'
@@ -127,6 +246,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBoardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings/': {
+      id: '/_authenticated/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/table/$id': {
       id: '/_authenticated/table/$id'
       path: '/table/$id'
@@ -134,18 +260,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTableIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings/whatsapp': {
+      id: '/_authenticated/settings/whatsapp'
+      path: '/whatsapp'
+      fullPath: '/settings/whatsapp'
+      preLoaderRoute: typeof AuthenticatedSettingsWhatsappRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/settings/team': {
+      id: '/_authenticated/settings/team'
+      path: '/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof AuthenticatedSettingsTeamRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/api/public/webhook/whatsapp': {
+      id: '/api/public/webhook/whatsapp'
+      path: '/api/public/webhook/whatsapp'
+      fullPath: '/api/public/webhook/whatsapp'
+      preLoaderRoute: typeof ApiPublicWebhookWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
+
+interface AuthenticatedSettingsRouteChildren {
+  AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
+  AuthenticatedSettingsWhatsappRoute: typeof AuthenticatedSettingsWhatsappRoute
+  AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
+}
+
+const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
+  AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
+  AuthenticatedSettingsWhatsappRoute: AuthenticatedSettingsWhatsappRoute,
+  AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
+}
+
+const AuthenticatedSettingsRouteWithChildren =
+  AuthenticatedSettingsRoute._addFileChildren(
+    AuthenticatedSettingsRouteChildren,
+  )
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedBoardRoute: typeof AuthenticatedBoardRoute
   AuthenticatedConfigRoute: typeof AuthenticatedConfigRoute
+  AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
   AuthenticatedTableIdRoute: typeof AuthenticatedTableIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBoardRoute: AuthenticatedBoardRoute,
   AuthenticatedConfigRoute: AuthenticatedConfigRoute,
+  AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
   AuthenticatedTableIdRoute: AuthenticatedTableIdRoute,
 }
 
@@ -156,6 +324,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  InviteTokenRoute: InviteTokenRoute,
+  ApiPublicWebhookWhatsappRoute: ApiPublicWebhookWhatsappRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

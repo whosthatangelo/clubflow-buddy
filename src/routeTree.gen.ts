@@ -15,7 +15,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedConfigRouteImport } from './routes/_authenticated/config'
 import { Route as AuthenticatedBoardRouteImport } from './routes/_authenticated/board'
 import { Route as AuthenticatedTableIdRouteImport } from './routes/_authenticated/table.$id'
-import { Route as ApiPublicWebhookWhatsappRouteImport } from './routes/api/public/webhook.whatsapp'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -46,12 +45,6 @@ const AuthenticatedTableIdRoute = AuthenticatedTableIdRouteImport.update({
   path: '/table/$id',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const ApiPublicWebhookWhatsappRoute =
-  ApiPublicWebhookWhatsappRouteImport.update({
-    id: '/api/public/webhook/whatsapp',
-    path: '/api/public/webhook/whatsapp',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -59,7 +52,6 @@ export interface FileRoutesByFullPath {
   '/board': typeof AuthenticatedBoardRoute
   '/config': typeof AuthenticatedConfigRoute
   '/table/$id': typeof AuthenticatedTableIdRoute
-  '/api/public/webhook/whatsapp': typeof ApiPublicWebhookWhatsappRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -67,7 +59,6 @@ export interface FileRoutesByTo {
   '/board': typeof AuthenticatedBoardRoute
   '/config': typeof AuthenticatedConfigRoute
   '/table/$id': typeof AuthenticatedTableIdRoute
-  '/api/public/webhook/whatsapp': typeof ApiPublicWebhookWhatsappRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,25 +68,12 @@ export interface FileRoutesById {
   '/_authenticated/board': typeof AuthenticatedBoardRoute
   '/_authenticated/config': typeof AuthenticatedConfigRoute
   '/_authenticated/table/$id': typeof AuthenticatedTableIdRoute
-  '/api/public/webhook/whatsapp': typeof ApiPublicWebhookWhatsappRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/auth'
-    | '/board'
-    | '/config'
-    | '/table/$id'
-    | '/api/public/webhook/whatsapp'
+  fullPaths: '/' | '/auth' | '/board' | '/config' | '/table/$id'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/auth'
-    | '/board'
-    | '/config'
-    | '/table/$id'
-    | '/api/public/webhook/whatsapp'
+  to: '/' | '/auth' | '/board' | '/config' | '/table/$id'
   id:
     | '__root__'
     | '/'
@@ -104,14 +82,12 @@ export interface FileRouteTypes {
     | '/_authenticated/board'
     | '/_authenticated/config'
     | '/_authenticated/table/$id'
-    | '/api/public/webhook/whatsapp'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
-  ApiPublicWebhookWhatsappRoute: typeof ApiPublicWebhookWhatsappRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -158,13 +134,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTableIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/webhook/whatsapp': {
-      id: '/api/public/webhook/whatsapp'
-      path: '/api/public/webhook/whatsapp'
-      fullPath: '/api/public/webhook/whatsapp'
-      preLoaderRoute: typeof ApiPublicWebhookWhatsappRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -187,8 +156,17 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
-  ApiPublicWebhookWhatsappRoute: ApiPublicWebhookWhatsappRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useRole } from "@/hooks/use-role";
+import { useCurrentTeam } from "@/hooks/use-current-team";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,16 +19,16 @@ interface ClubTable {
 }
 
 function ConfigPage() {
-  const { isAdmin, loading } = useRole();
+  const { isAdmin, status, teamId } = useCurrentTeam();
   const [tab, setTab] = useState<Tab>("zones");
 
-  if (loading) return <p className="p-6 text-muted-foreground">Caricamento…</p>;
-  if (!isAdmin) {
+  if (status === "loading") return <p className="p-6 text-muted-foreground">Caricamento…</p>;
+  if (!isAdmin || !teamId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
         <h2 className="text-xl font-bold">Solo admin</h2>
         <p className="text-sm text-muted-foreground mt-2">Non hai i permessi per la configurazione.</p>
-        <Link to="/board" className="mt-6 inline-flex items-center justify-center px-5 rounded-xl bg-primary text-primary-foreground font-bold">
+        <Link to="/board" className="mt-6 inline-flex items-center justify-center h-12 px-5 rounded-xl bg-primary text-primary-foreground font-bold">
           Vai alla board
         </Link>
       </div>
@@ -58,31 +58,31 @@ function ConfigPage() {
       </div>
 
       <main className="px-4">
-        {tab === "zones" && <ZonesTab />}
-        {tab === "bottles" && <BottlesTab />}
-        {tab === "tables" && <TablesTab />}
+        {tab === "zones" && <ZonesTab teamId={teamId} />}
+        {tab === "bottles" && <BottlesTab teamId={teamId} />}
+        {tab === "tables" && <TablesTab teamId={teamId} />}
       </main>
     </div>
   );
 }
 
 /* ============ ZONES ============ */
-function ZonesTab() {
+function ZonesTab({ teamId }: { teamId: string }) {
   const [items, setItems] = useState<Zone[]>([]);
   const [name, setName] = useState("");
   const [minPp, setMinPp] = useState("");
 
-  const load = async () => {
-    const { data } = await supabase.from("zones").select("*").order("name");
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("zones").select("*").eq("team_id", teamId).order("name");
     setItems((data ?? []) as Zone[]);
-  };
-  useEffect(() => { load(); }, []);
+  }, [teamId]);
+  useEffect(() => { load(); }, [load]);
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const value = parseFloat(minPp);
     if (!name.trim() || isNaN(value) || value < 0) return toast.error("Dati non validi");
-    const { error } = await supabase.from("zones").insert({ name: name.trim(), min_per_person: value });
+    const { error } = await supabase.from("zones").insert({ team_id: teamId, name: name.trim(), min_per_person: value });
     if (error) return toast.error(error.message);
     setName(""); setMinPp(""); load();
   };
@@ -136,22 +136,22 @@ function ZonesTab() {
 }
 
 /* ============ BOTTLES ============ */
-function BottlesTab() {
+function BottlesTab({ teamId }: { teamId: string }) {
   const [items, setItems] = useState<Bottle[]>([]);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
 
-  const load = async () => {
-    const { data } = await supabase.from("bottles").select("*").order("price");
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("bottles").select("*").eq("team_id", teamId).order("price");
     setItems((data ?? []) as Bottle[]);
-  };
-  useEffect(() => { load(); }, []);
+  }, [teamId]);
+  useEffect(() => { load(); }, [load]);
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const value = parseFloat(price);
     if (!name.trim() || isNaN(value) || value <= 0) return toast.error("Dati non validi");
-    const { error } = await supabase.from("bottles").insert({ name: name.trim(), price: value });
+    const { error } = await supabase.from("bottles").insert({ team_id: teamId, name: name.trim(), price: value });
     if (error) return toast.error(error.message);
     setName(""); setPrice(""); load();
   };
@@ -205,7 +205,7 @@ function BottlesTab() {
 }
 
 /* ============ TABLES ============ */
-function TablesTab() {
+function TablesTab({ teamId }: { teamId: string }) {
   const [items, setItems] = useState<ClubTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [refName, setRefName] = useState("");
@@ -213,16 +213,16 @@ function TablesTab() {
   const [people, setPeople] = useState("4");
   const [zoneId, setZoneId] = useState<string>("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [{ data: t }, { data: z }] = await Promise.all([
-      supabase.from("club_tables").select("id,ref_name,whatsapp,people_count,zone_id").order("created_at"),
-      supabase.from("zones").select("*").order("name"),
+      supabase.from("club_tables").select("id,ref_name,whatsapp,people_count,zone_id").eq("team_id", teamId).order("created_at"),
+      supabase.from("zones").select("*").eq("team_id", teamId).order("name"),
     ]);
     setItems((t ?? []) as ClubTable[]);
     setZones((z ?? []) as Zone[]);
-    if (z && z.length > 0 && !zoneId) setZoneId(z[0].id);
-  };
-  useEffect(() => { load(); }, []);
+    if (z && z.length > 0) setZoneId((curr) => curr || z[0].id);
+  }, [teamId]);
+  useEffect(() => { load(); }, [load]);
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,6 +230,7 @@ function TablesTab() {
     if (!refName.trim() || isNaN(p) || p < 1) return toast.error("Dati non validi");
     if (!zoneId) return toast.error("Crea prima una zona");
     const { error } = await supabase.from("club_tables").insert({
+      team_id: teamId,
       ref_name: refName.trim(),
       whatsapp: whatsapp.trim() || null,
       people_count: p,

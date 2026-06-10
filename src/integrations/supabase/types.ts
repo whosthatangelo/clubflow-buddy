@@ -24,6 +24,7 @@ export type Database = {
           message: string | null
           resolved_at: string | null
           table_id: string | null
+          team_id: string
         }
         Insert: {
           claimed_at?: string | null
@@ -34,6 +35,7 @@ export type Database = {
           message?: string | null
           resolved_at?: string | null
           table_id?: string | null
+          team_id: string
         }
         Update: {
           claimed_at?: string | null
@@ -44,6 +46,7 @@ export type Database = {
           message?: string | null
           resolved_at?: string | null
           table_id?: string | null
+          team_id?: string
         }
         Relationships: [
           {
@@ -51,6 +54,13 @@ export type Database = {
             columns: ["table_id"]
             isOneToOne: false
             referencedRelation: "club_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]
@@ -61,20 +71,31 @@ export type Database = {
           id: string
           name: string
           price: number
+          team_id: string
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
           price: number
+          team_id: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
           price?: number
+          team_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bottles_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       club_tables: {
         Row: {
@@ -91,6 +112,7 @@ export type Database = {
           ref_name: string
           selected_bottle_ids: string[] | null
           status: Database["public"]["Enums"]["table_status"]
+          team_id: string
           total_amount: number | null
           updated_at: string
           whatsapp: string | null
@@ -110,6 +132,7 @@ export type Database = {
           ref_name: string
           selected_bottle_ids?: string[] | null
           status?: Database["public"]["Enums"]["table_status"]
+          team_id: string
           total_amount?: number | null
           updated_at?: string
           whatsapp?: string | null
@@ -129,12 +152,20 @@ export type Database = {
           ref_name?: string
           selected_bottle_ids?: string[] | null
           status?: Database["public"]["Enums"]["table_status"]
+          team_id?: string
           total_amount?: number | null
           updated_at?: string
           whatsapp?: string | null
           zone_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "club_tables_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "club_tables_zone_id_fkey"
             columns: ["zone_id"]
@@ -165,24 +196,144 @@ export type Database = {
         }
         Relationships: []
       }
-      user_roles: {
+      team_invites: {
+        Row: {
+          created_at: string
+          created_by: string
+          email: string | null
+          expires_at: string
+          id: string
+          role: Database["public"]["Enums"]["team_role"]
+          team_id: string
+          token: string
+          used_at: string | null
+          used_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          email?: string | null
+          expires_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["team_role"]
+          team_id: string
+          token?: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          email?: string | null
+          expires_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["team_role"]
+          team_id?: string
+          token?: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_invites_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_members: {
         Row: {
           created_at: string
           id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: Database["public"]["Enums"]["team_role"]
+          status: Database["public"]["Enums"]["member_status"]
+          team_id: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
-          role: Database["public"]["Enums"]["app_role"]
+          role?: Database["public"]["Enums"]["team_role"]
+          status?: Database["public"]["Enums"]["member_status"]
+          team_id: string
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: Database["public"]["Enums"]["team_role"]
+          status?: Database["public"]["Enums"]["member_status"]
+          team_id?: string
           user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_members_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_settings: {
+        Row: {
+          team_id: string
+          twilio_account_sid: string | null
+          twilio_auth_token: string | null
+          twilio_whatsapp_number: string | null
+          updated_at: string
+          webhook_secret: string
+        }
+        Insert: {
+          team_id: string
+          twilio_account_sid?: string | null
+          twilio_auth_token?: string | null
+          twilio_whatsapp_number?: string | null
+          updated_at?: string
+          webhook_secret?: string
+        }
+        Update: {
+          team_id?: string
+          twilio_account_sid?: string | null
+          twilio_auth_token?: string | null
+          twilio_whatsapp_number?: string | null
+          updated_at?: string
+          webhook_secret?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_settings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: true
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -192,37 +343,49 @@ export type Database = {
           id: string
           min_per_person: number
           name: string
+          team_id: string
         }
         Insert: {
           created_at?: string
           id?: string
           min_per_person: number
           name: string
+          team_id: string
         }
         Update: {
           created_at?: string
           id?: string
           min_per_person?: number
           name?: string
+          team_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "zones_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
+      is_team_admin: {
+        Args: { _team_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_team_member: {
+        Args: { _team_id: string; _user_id: string }
         Returns: boolean
       }
     }
     Enums: {
       alert_kind: "whatsapp_msg" | "bottle_late" | "help_needed"
-      app_role: "admin" | "staff"
+      member_status: "active" | "pending"
       payment_method: "cash" | "pos"
       table_status:
         | "arriving"
@@ -234,6 +397,7 @@ export type Database = {
         | "bottle_arrived"
         | "reorder"
         | "closed"
+      team_role: "admin" | "staff"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -362,7 +526,7 @@ export const Constants = {
   public: {
     Enums: {
       alert_kind: ["whatsapp_msg", "bottle_late", "help_needed"],
-      app_role: ["admin", "staff"],
+      member_status: ["active", "pending"],
       payment_method: ["cash", "pos"],
       table_status: [
         "arriving",
@@ -375,6 +539,7 @@ export const Constants = {
         "reorder",
         "closed",
       ],
+      team_role: ["admin", "staff"],
     },
   },
 } as const

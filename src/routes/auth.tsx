@@ -118,7 +118,7 @@ function AuthPage() {
 
           {mode === "signup" && (
             <p className="mt-4 text-xs text-muted-foreground text-center">
-              Il primo utente registrato diventa <span className="text-primary font-semibold">Admin</span>. Gli altri vengono creati come Staff.
+              Dopo la registrazione potrai creare il tuo team o accettare un invito.
             </p>
           )}
         </div>

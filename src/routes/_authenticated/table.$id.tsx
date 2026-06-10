@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useRole } from "@/hooks/use-role";
+import { useCurrentTeam } from "@/hooks/use-current-team";
 import { STATUS_LABEL, STATUS_ORDER, nextStatus, type TableStatus } from "@/lib/status";
 import { calculateCheckin, type Bottle as BottleT } from "@/lib/bottle-calc";
 import { ArrowLeft, Minus, Plus, Check, Banknote, CreditCard, HandMetal } from "lucide-react";
@@ -27,7 +27,7 @@ interface ClubTable {
 
 function TableDetail() {
   const { id } = Route.useParams();
-  const { user } = useRole();
+  const { user, teamId } = useCurrentTeam();
   const navigate = useNavigate();
   const [table, setTable] = useState<ClubTable | null>(null);
   const [zone, setZone] = useState<Zone | null>(null);
@@ -82,22 +82,23 @@ function TableDetail() {
       .eq("id", id);
     if (error) toast.error(error.message);
 
-    // Risolvi gli alert aperti per questo tavolo quando avanza
     if (ns === "bottle_arrived" || ns === "closed") {
       await supabase
-        .from("alerts" as never)
-        .update({ resolved_at: now } as never)
+        .from("alerts")
+        .update({ resolved_at: now })
         .eq("table_id", id)
         .is("resolved_at", null);
     }
   };
 
   const callHelp = async () => {
-    const { error } = await supabase.from("alerts" as never).insert({
+    if (!teamId) return;
+    const { error } = await supabase.from("alerts").insert({
+      team_id: teamId,
       kind: "help_needed",
       table_id: id,
       message: `Serve aiuto al tavolo ${table?.ref_name ?? ""}`.trim(),
-    } as never);
+    });
     if (error) return toast.error(error.message);
     toast.success("Alert inviato allo staff");
   };

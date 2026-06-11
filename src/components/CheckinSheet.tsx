@@ -72,7 +72,7 @@ export function CheckinSheet({
       event_id: eventId,
       table_id: tableId,
       type: "checkin",
-      bottles: selected,
+      bottles: selected as unknown as never,
       total,
       created_by: userId,
     });

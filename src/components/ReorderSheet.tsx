@@ -49,7 +49,7 @@ export function ReorderSheet({
       event_id: eventId,
       table_id: tableId,
       type: "reorder",
-      bottles: selected,
+      bottles: selected as unknown as never,
       total,
       notes: notes.trim() || null,
       created_by: userId,

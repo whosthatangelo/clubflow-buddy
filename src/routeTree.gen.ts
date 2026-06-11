@@ -15,12 +15,15 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
+import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated/events'
 import { Route as AuthenticatedConfigRouteImport } from './routes/_authenticated/config'
 import { Route as AuthenticatedBoardRouteImport } from './routes/_authenticated/board'
+import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
 import { Route as AuthenticatedTableIdRouteImport } from './routes/_authenticated/table.$id'
 import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_authenticated/settings.whatsapp'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings.team'
+import { Route as AuthenticatedEventIdRouteImport } from './routes/_authenticated/event.$id'
 import { Route as ApiPublicWebhookWhatsappRouteImport } from './routes/api/public/webhook.whatsapp'
 
 const AuthRoute = AuthRouteImport.update({
@@ -52,6 +55,11 @@ const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedEventsRoute = AuthenticatedEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedConfigRoute = AuthenticatedConfigRouteImport.update({
   id: '/config',
   path: '/config',
@@ -60,6 +68,11 @@ const AuthenticatedConfigRoute = AuthenticatedConfigRouteImport.update({
 const AuthenticatedBoardRoute = AuthenticatedBoardRouteImport.update({
   id: '/board',
   path: '/board',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSettingsIndexRoute =
@@ -85,6 +98,11 @@ const AuthenticatedSettingsTeamRoute =
     path: '/team',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedEventIdRoute = AuthenticatedEventIdRouteImport.update({
+  id: '/event/$id',
+  path: '/event/$id',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const ApiPublicWebhookWhatsappRoute =
   ApiPublicWebhookWhatsappRouteImport.update({
     id: '/api/public/webhook/whatsapp',
@@ -95,11 +113,14 @@ const ApiPublicWebhookWhatsappRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
   '/board': typeof AuthenticatedBoardRoute
   '/config': typeof AuthenticatedConfigRoute
+  '/events': typeof AuthenticatedEventsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
+  '/event/$id': typeof AuthenticatedEventIdRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/table/$id': typeof AuthenticatedTableIdRoute
@@ -109,10 +130,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
   '/board': typeof AuthenticatedBoardRoute
   '/config': typeof AuthenticatedConfigRoute
+  '/events': typeof AuthenticatedEventsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/event/$id': typeof AuthenticatedEventIdRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/table/$id': typeof AuthenticatedTableIdRoute
@@ -124,11 +148,14 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/board': typeof AuthenticatedBoardRoute
   '/_authenticated/config': typeof AuthenticatedConfigRoute
+  '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
+  '/_authenticated/event/$id': typeof AuthenticatedEventIdRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/_authenticated/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/_authenticated/table/$id': typeof AuthenticatedTableIdRoute
@@ -140,11 +167,14 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/analytics'
     | '/board'
     | '/config'
+    | '/events'
     | '/onboarding'
     | '/settings'
     | '/invite/$token'
+    | '/event/$id'
     | '/settings/team'
     | '/settings/whatsapp'
     | '/table/$id'
@@ -154,10 +184,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/analytics'
     | '/board'
     | '/config'
+    | '/events'
     | '/onboarding'
     | '/invite/$token'
+    | '/event/$id'
     | '/settings/team'
     | '/settings/whatsapp'
     | '/table/$id'
@@ -168,11 +201,14 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/analytics'
     | '/_authenticated/board'
     | '/_authenticated/config'
+    | '/_authenticated/events'
     | '/_authenticated/onboarding'
     | '/_authenticated/settings'
     | '/invite/$token'
+    | '/_authenticated/event/$id'
     | '/_authenticated/settings/team'
     | '/_authenticated/settings/whatsapp'
     | '/_authenticated/table/$id'
@@ -232,6 +268,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/events': {
+      id: '/_authenticated/events'
+      path: '/events'
+      fullPath: '/events'
+      preLoaderRoute: typeof AuthenticatedEventsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/config': {
       id: '/_authenticated/config'
       path: '/config'
@@ -244,6 +287,13 @@ declare module '@tanstack/react-router' {
       path: '/board'
       fullPath: '/board'
       preLoaderRoute: typeof AuthenticatedBoardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/analytics': {
+      id: '/_authenticated/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings/': {
@@ -274,6 +324,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsTeamRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/event/$id': {
+      id: '/_authenticated/event/$id'
+      path: '/event/$id'
+      fullPath: '/event/$id'
+      preLoaderRoute: typeof AuthenticatedEventIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/api/public/webhook/whatsapp': {
       id: '/api/public/webhook/whatsapp'
       path: '/api/public/webhook/whatsapp'
@@ -302,18 +359,24 @@ const AuthenticatedSettingsRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedBoardRoute: typeof AuthenticatedBoardRoute
   AuthenticatedConfigRoute: typeof AuthenticatedConfigRoute
+  AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
+  AuthenticatedEventIdRoute: typeof AuthenticatedEventIdRoute
   AuthenticatedTableIdRoute: typeof AuthenticatedTableIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedBoardRoute: AuthenticatedBoardRoute,
   AuthenticatedConfigRoute: AuthenticatedConfigRoute,
+  AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
+  AuthenticatedEventIdRoute: AuthenticatedEventIdRoute,
   AuthenticatedTableIdRoute: AuthenticatedTableIdRoute,
 }
 
@@ -330,13 +393,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

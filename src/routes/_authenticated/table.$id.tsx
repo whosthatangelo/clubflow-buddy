@@ -1,11 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
-import { STATUS_LABEL, STATUS_ORDER, nextStatus, type TableStatus } from "@/lib/status";
-import { calculateCheckin, type Bottle as BottleT } from "@/lib/bottle-calc";
-import { ArrowLeft, Minus, Plus, Check, Banknote, CreditCard, HandMetal } from "lucide-react";
+import { STATUS_LABEL, STATUS_ORDER, nextStatus, requiresInput, type TableStatus } from "@/lib/status";
+import { ArrowLeft, Check, HandMetal, Plus, StickyNote } from "lucide-react";
 import { toast } from "sonner";
+import { CheckinSheet, type SelectedBottle } from "@/components/CheckinSheet";
+import { ReorderSheet } from "@/components/ReorderSheet";
 
 export const Route = createFileRoute("/_authenticated/table/$id")({
   component: TableDetail,
@@ -14,6 +15,8 @@ export const Route = createFileRoute("/_authenticated/table/$id")({
 interface Zone { id: string; name: string; min_per_person: number; }
 interface ClubTable {
   id: string;
+  team_id: string;
+  event_id: string;
   ref_name: string;
   whatsapp: string | null;
   people_count: number;
@@ -22,7 +25,15 @@ interface ClubTable {
   assigned_to: string | null;
   total_amount: number | null;
   payment_method: "cash" | "pos" | null;
-  selected_bottle_ids: string[] | null;
+  notes: string | null;
+}
+interface OrderRow {
+  id: string;
+  type: "checkin" | "reorder";
+  bottles: SelectedBottle[];
+  total: number;
+  notes: string | null;
+  created_at: string;
 }
 
 function TableDetail() {
@@ -31,110 +42,110 @@ function TableDetail() {
   const navigate = useNavigate();
   const [table, setTable] = useState<ClubTable | null>(null);
   const [zone, setZone] = useState<Zone | null>(null);
-  const [bottles, setBottles] = useState<BottleT[]>([]);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkinOpen, setCheckinOpen] = useState(false);
+  const [reorderOpen, setReorderOpen] = useState(false);
+  const [notesDraft, setNotesDraft] = useState("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const { data: t } = await supabase.from("club_tables").select("*").eq("id", id).maybeSingle();
     if (!t) { setLoading(false); return; }
     setTable(t as ClubTable);
-    const [{ data: z }, { data: b }] = await Promise.all([
+    setNotesDraft((t as ClubTable).notes ?? "");
+    const [{ data: z }, { data: o }] = await Promise.all([
       t.zone_id ? supabase.from("zones").select("*").eq("id", t.zone_id).maybeSingle() : Promise.resolve({ data: null }),
-      supabase.from("bottles").select("*").order("price"),
+      supabase.from("table_orders").select("*").eq("table_id", id).order("created_at"),
     ]);
     setZone((z as Zone) ?? null);
-    setBottles((b ?? []) as BottleT[]);
+    setOrders((o ?? []) as unknown as OrderRow[]);
     setLoading(false);
-  };
+  }, [id]);
 
   useEffect(() => {
     load();
-    const channel = supabase
+    const ch = supabase
       .channel(`table-${id}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "club_tables", filter: `id=eq.${id}` }, (payload) => {
-        setTable(payload.new as ClubTable);
-      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "club_tables", filter: `id=eq.${id}` },
+        (payload) => setTable(payload.new as ClubTable))
+      .on("postgres_changes", { event: "*", schema: "public", table: "table_orders", filter: `table_id=eq.${id}` },
+        () => load())
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    return () => { supabase.removeChannel(ch); };
+  }, [id, load]);
 
   const advance = async () => {
     if (!table) return;
-    if (table.status === "arriving") {
-      setCheckinOpen(true);
-      return;
-    }
+    if (requiresInput(table.status)) { setCheckinOpen(true); return; }
     const ns = nextStatus(table.status);
     if (!ns) return;
     const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("club_tables")
-      .update({
-        status: ns,
-        assigned_to: table.assigned_to ?? user?.id ?? null,
-        ...(ns === "fish_delivered" ? { fish_delivered_at: now } : {}),
-        ...(ns === "bottle_waiting" ? { bottle_waiting_at: now } : {}),
-        ...(ns === "bottle_arrived" ? { bottle_arrived_at: now } : {}),
-        ...(ns === "closed" ? { closed_at: now } : {}),
-      })
-      .eq("id", id);
+    const { error } = await supabase.from("club_tables").update({
+      status: ns,
+      assigned_to: table.assigned_to ?? user?.id ?? null,
+      ...(ns === "fish_delivered" ? { fish_delivered_at: now } : {}),
+      ...(ns === "bottle_waiting" ? { bottle_waiting_at: now } : {}),
+      ...(ns === "bottle_arrived" ? { bottle_arrived_at: now } : {}),
+      ...(ns === "closed" ? { closed_at: now } : {}),
+    }).eq("id", id);
     if (error) toast.error(error.message);
-
     if (ns === "bottle_arrived" || ns === "closed") {
-      await supabase
-        .from("alerts")
-        .update({ resolved_at: now })
-        .eq("table_id", id)
-        .is("resolved_at", null);
+      await supabase.from("alerts").update({ resolved_at: now }).eq("table_id", id).is("resolved_at", null);
     }
   };
 
   const callHelp = async () => {
-    if (!teamId) return;
+    if (!teamId || !table) return;
     const { error } = await supabase.from("alerts").insert({
       team_id: teamId,
+      event_id: table.event_id,
       kind: "help_needed",
       table_id: id,
-      message: `Serve aiuto al tavolo ${table?.ref_name ?? ""}`.trim(),
+      message: `Serve aiuto al tavolo ${table.ref_name}`,
     });
     if (error) return toast.error(error.message);
     toast.success("Alert inviato allo staff");
+  };
+
+  const saveNotes = async () => {
+    if (!table) return;
+    const { error } = await supabase.from("club_tables").update({ notes: notesDraft.trim() || null }).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("Note salvate");
   };
 
   if (loading) return <p className="p-6 text-muted-foreground">Caricamento…</p>;
   if (!table) return (
     <div className="p-6 text-center">
       <p>Tavolo non trovato.</p>
-      <Link to="/board" className="inline-flex items-center justify-center mt-4 px-5 rounded-xl bg-primary text-primary-foreground font-bold">
-        Board
-      </Link>
+      <Link to="/board" className="inline-flex items-center justify-center mt-4 px-5 h-11 rounded-xl bg-primary text-primary-foreground font-bold">Board</Link>
     </div>
   );
 
   const ns = nextStatus(table.status);
-  const selectedBottles = bottles.filter((b) => table.selected_bottle_ids?.includes(b.id));
+  const ordersTotal = orders.reduce((s, o) => s + Number(o.total), 0);
+  const canReorder = table.status !== "arriving";
 
   return (
-    <div className="min-h-screen pb-32">
+    <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-20 backdrop-blur bg-background/85 border-b border-border px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate({ to: "/board" })} aria-label="Indietro" className="h-11 w-11 grid place-items-center rounded-xl bg-secondary">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-lg font-black truncate">{table.ref_name}</h1>
           <p className="text-xs text-muted-foreground">{table.people_count} pax · {zone?.name ?? "—"}</p>
         </div>
       </header>
 
-      <main className="p-4 space-y-4">
-        {/* Stepper stati */}
+      {/* Scrollable content */}
+      <main className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Stepper */}
         <div className="rounded-2xl bg-card border border-border p-4">
           <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Stato</h3>
           <div className="space-y-1.5">
             {STATUS_ORDER.map((s, i) => {
-              const currentIdx = STATUS_ORDER.indexOf(table.status);
+              const currentIdx = STATUS_ORDER.indexOf(table.status === "reorder" ? "bottle_arrived" : table.status);
               const done = i < currentIdx;
               const active = i === currentIdx;
               return (
@@ -147,32 +158,73 @@ function TableDetail() {
               );
             })}
           </div>
+          {table.status === "reorder" && (
+            <p className="mt-3 text-xs text-warning font-bold">⚡ Riordine in corso</p>
+          )}
         </div>
 
-        {/* Riepilogo spesa */}
-        {table.total_amount && (
+        {/* Totale + ordini */}
+        {orders.length > 0 && (
           <div className="rounded-2xl bg-card border border-border p-4">
             <div className="flex items-baseline justify-between">
-              <h3 className="font-bold">Spesa</h3>
-              <span className="text-2xl font-black tabular-nums">€{table.total_amount}</span>
+              <h3 className="font-bold">Totale tavolo</h3>
+              <span className="text-2xl font-black tabular-nums">€{ordersTotal.toFixed(2)}</span>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Pagamento: {table.payment_method === "cash" ? "Contanti" : table.payment_method === "pos" ? "POS" : "—"}
-            </p>
-            {selectedBottles.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-border space-y-1">
-                {selectedBottles.map((b, i) => (
-                  <div key={`${b.id}-${i}`} className="flex justify-between text-sm">
-                    <span>{b.name}</span>
-                    <span className="tabular-nums text-muted-foreground">€{b.price}</span>
-                  </div>
-                ))}
-              </div>
+            {table.payment_method && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Pagamento check-in: {table.payment_method === "cash" ? "Contanti" : "POS"}
+              </p>
             )}
+            <div className="mt-3 pt-3 border-t border-border space-y-3">
+              {orders.map((o) => (
+                <div key={o.id}>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs uppercase tracking-wider font-bold text-muted-foreground">
+                      {o.type === "checkin" ? "Check-in" : "Riordine"}
+                    </span>
+                    <span className="text-sm font-bold tabular-nums">€{Number(o.total).toFixed(2)}</span>
+                  </div>
+                  <ul className="mt-1 space-y-0.5">
+                    {o.bottles.map((b, i) => (
+                      <li key={i} className="flex justify-between text-sm">
+                        <span className="truncate">{b.name}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          €{b.price_actual}
+                          {b.price_actual !== b.price_list && <span className="ml-1 text-[10px] line-through">€{b.price_list}</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {o.notes && <p className="mt-1 text-xs text-muted-foreground italic">"{o.notes}"</p>}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Note WhatsApp */}
+        {canReorder && (
+          <button onClick={() => setReorderOpen(true)}
+            className="w-full h-12 rounded-2xl bg-secondary text-foreground font-bold inline-flex items-center justify-center gap-2">
+            <Plus className="w-5 h-5" /> Nuovo riordine
+          </button>
+        )}
+
+        {/* Note */}
+        <div className="rounded-2xl bg-card border border-border p-4">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-1.5">
+            <StickyNote className="w-3.5 h-3.5" /> Note tavolo
+          </h3>
+          <textarea value={notesDraft} onChange={(e) => setNotesDraft(e.target.value)} rows={3}
+            placeholder="Allergie, richieste, preferenze…"
+            className="mt-2 w-full p-3 rounded-xl bg-input border border-border resize-none text-sm" />
+          {(notesDraft ?? "") !== (table.notes ?? "") && (
+            <button onClick={saveNotes} className="mt-2 w-full h-10 rounded-lg bg-primary text-primary-foreground font-bold text-sm">
+              Salva note
+            </button>
+          )}
+        </div>
+
+        {/* WhatsApp */}
         {table.whatsapp && (
           <div className="rounded-2xl bg-card border border-border p-4">
             <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground">WhatsApp</h3>
@@ -180,204 +232,50 @@ function TableDetail() {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={callHelp}
-          className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2"
-        >
+        <button type="button" onClick={callHelp}
+          className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2">
           <HandMetal className="w-5 h-5" /> Chiedi aiuto allo staff
         </button>
       </main>
 
-      {/* CTA Avanza stato */}
+      {/* CTA Avanza — sticky bottom, mai sovrapposta */}
       {ns && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background to-transparent">
-          <button
-            onClick={advance}
-            className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-black text-base shadow-lg"
-          >
-            {table.status === "arriving" ? "Check-in →" : `Avanza: ${STATUS_LABEL[ns]} →`}
+        <div className="border-t border-border bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button onClick={advance}
+            className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-black">
+            {requiresInput(table.status) ? "Check-in →" : `Avanza: ${STATUS_LABEL[ns]} →`}
           </button>
         </div>
       )}
 
-      {checkinOpen && zone && (
+      {checkinOpen && zone && user && teamId && (
         <CheckinSheet
-          table={table}
-          zone={zone}
-          bottles={bottles}
+          tableId={table.id}
+          teamId={teamId}
+          eventId={table.event_id}
+          userId={user.id}
+          refName={table.ref_name}
+          initialPeople={table.people_count}
+          minPerPerson={zone.min_per_person}
+          zoneName={zone.name}
           onClose={() => setCheckinOpen(false)}
-          onDone={() => { setCheckinOpen(false); }}
+          onDone={() => { setCheckinOpen(false); load(); }}
         />
       )}
-      {checkinOpen && !zone && (() => {
-        toast.error("Tavolo senza zona assegnata"); setCheckinOpen(false); return null;
-      })()}
-    </div>
-  );
-}
+      {checkinOpen && !zone && (() => { toast.error("Tavolo senza zona"); setCheckinOpen(false); return null; })()}
 
-/* ============ CHECK-IN SHEET ============ */
-function CheckinSheet({
-  table, zone, bottles, onClose, onDone,
-}: {
-  table: ClubTable; zone: Zone; bottles: BottleT[]; onClose: () => void; onDone: () => void;
-}) {
-  const [people, setPeople] = useState(table.people_count);
-  const [useUpsell, setUseUpsell] = useState(false);
-  const [payment, setPayment] = useState<"cash" | "pos" | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const calc = useMemo(
-    () => calculateCheckin(people, zone.min_per_person, bottles),
-    [people, zone.min_per_person, bottles],
-  );
-
-  const chosen = useUpsell && calc.upsell ? calc.upsell.combination : calc.best;
-  const totalToPay = useUpsell && calc.upsell ? calc.upsell.combination.total : calc.required;
-
-  const confirm = async () => {
-    if (!payment) return toast.error("Scegli il metodo di pagamento");
-    setSubmitting(true);
-    const { error } = await supabase.from("club_tables").update({
-      people_count: people,
-      status: "at_cashier",
-      total_amount: totalToPay,
-      payment_method: payment,
-      selected_bottle_ids: chosen.bottles.map((b) => b.id),
-      check_in_at: new Date().toISOString(),
-    }).eq("id", table.id);
-    setSubmitting(false);
-    if (error) return toast.error(error.message);
-    toast.success("Check-in confermato");
-    onDone();
-  };
-
-  return (
-    <div className="fixed inset-0 z-40 bg-background/95 backdrop-blur overflow-y-auto">
-      <div className="max-w-md mx-auto p-4 pb-32">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-black">Check-in</h2>
-          <button onClick={onClose} className="h-11 px-4 rounded-xl bg-secondary font-semibold">Annulla</button>
-        </div>
-
-        {/* Persone */}
-        <div className="rounded-2xl bg-card border border-border p-4">
-          <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Persone arrivate</h3>
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <button
-              onClick={() => setPeople((p) => Math.max(1, p - 1))}
-              className="h-14 w-14 rounded-2xl bg-secondary grid place-items-center"
-            >
-              <Minus className="w-6 h-6" />
-            </button>
-            <span className="text-5xl font-black tabular-nums">{people}</span>
-            <button
-              onClick={() => setPeople((p) => p + 1)}
-              className="h-14 w-14 rounded-2xl bg-secondary grid place-items-center"
-            >
-              <Plus className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-
-        {/* Calcolo */}
-        <div className="rounded-2xl bg-card border border-border p-4 mt-3">
-          <div className="flex items-baseline justify-between">
-            <div>
-              <div className="text-xs text-muted-foreground">Minimo dovuto ({zone.name})</div>
-              <div className="text-2xl font-black tabular-nums">€{calc.required}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground">{people} × €{zone.min_per_person}</div>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-border">
-            <h4 className="font-bold text-sm mb-2">Combinazione ottimale ({calc.best.bottles.length} bottiglie)</h4>
-            {calc.best.bottles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nessuna bottiglia rientra nel budget.</p>
-            ) : (
-              <ul className="space-y-1">
-                {calc.best.bottles.map((b, i) => (
-                  <li key={`${b.id}-${i}`} className="flex justify-between text-sm">
-                    <span>{b.name}</span>
-                    <span className="tabular-nums text-muted-foreground">€{b.price}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="mt-2 flex justify-between text-sm">
-              <span className="text-muted-foreground">Coperto</span>
-              <span className="tabular-nums font-semibold">€{calc.best.total}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Upsell */}
-        {calc.upsell && (
-          <button
-            type="button"
-            onClick={() => setUseUpsell((v) => !v)}
-            className={`mt-3 w-full text-left rounded-2xl border-2 p-4 transition-colors ${useUpsell ? "border-primary bg-primary/10" : "border-warning bg-warning/10"}`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-bold text-warning">💡 Sblocca 1 bottiglia in più</div>
-                <div className="text-xs mt-1 text-muted-foreground">
-                  Con +€{calc.upsell.extraTotal} totali (€{calc.upsell.extraPerPerson} a testa) →{" "}
-                  {calc.upsell.combination.bottles.length} bottiglie
-                </div>
-              </div>
-              <div className={`h-6 w-6 rounded-full border-2 ${useUpsell ? "bg-primary border-primary" : "border-warning"}`}>
-                {useUpsell && <Check className="w-full h-full text-primary-foreground" />}
-              </div>
-            </div>
-          </button>
-        )}
-
-        {/* Pagamento */}
-        <div className="mt-3 rounded-2xl bg-card border border-border p-4">
-          <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Pagamento</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setPayment("cash")}
-              className={`h-20 rounded-2xl flex flex-col items-center justify-center gap-1 font-bold ${payment === "cash" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"}`}
-            >
-              <Banknote className="w-6 h-6" />
-              Contanti
-            </button>
-            <button
-              type="button"
-              onClick={() => setPayment("pos")}
-              className={`h-20 rounded-2xl flex flex-col items-center justify-center gap-1 font-bold ${payment === "pos" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"}`}
-            >
-              <CreditCard className="w-6 h-6" />
-              POS
-            </button>
-          </div>
-        </div>
-
-        {/* Totale */}
-        <div className="mt-4 rounded-2xl bg-primary/10 border border-primary p-4 flex items-baseline justify-between">
-          <span className="font-bold">Da incassare</span>
-          <span className="text-3xl font-black tabular-nums text-primary">€{totalToPay}</span>
-        </div>
-
-        {/* Conferma */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background to-transparent">
-          <div className="max-w-md mx-auto">
-            <button
-              onClick={confirm}
-              disabled={submitting || !payment}
-              className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-black text-base disabled:opacity-50"
-            >
-              {submitting ? "Conferma…" : "Conferma check-in →"}
-            </button>
-          </div>
-        </div>
-      </div>
+      {reorderOpen && user && teamId && (
+        <ReorderSheet
+          tableId={table.id}
+          teamId={teamId}
+          eventId={table.event_id}
+          userId={user.id}
+          refName={table.ref_name}
+          currentTotal={ordersTotal}
+          onClose={() => setReorderOpen(false)}
+          onDone={() => { setReorderOpen(false); load(); }}
+        />
+      )}
     </div>
   );
 }

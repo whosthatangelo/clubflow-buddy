@@ -19,6 +19,7 @@ export type Database = {
           claimed_at: string | null
           claimed_by: string | null
           created_at: string
+          event_id: string | null
           id: string
           kind: Database["public"]["Enums"]["alert_kind"]
           message: string | null
@@ -30,6 +31,7 @@ export type Database = {
           claimed_at?: string | null
           claimed_by?: string | null
           created_at?: string
+          event_id?: string | null
           id?: string
           kind: Database["public"]["Enums"]["alert_kind"]
           message?: string | null
@@ -41,6 +43,7 @@ export type Database = {
           claimed_at?: string | null
           claimed_by?: string | null
           created_at?: string
+          event_id?: string | null
           id?: string
           kind?: Database["public"]["Enums"]["alert_kind"]
           message?: string | null
@@ -49,6 +52,13 @@ export type Database = {
           team_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "alerts_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "alerts_table_id_fkey"
             columns: ["table_id"]
@@ -68,6 +78,7 @@ export type Database = {
       bottles: {
         Row: {
           created_at: string
+          event_id: string
           id: string
           name: string
           price: number
@@ -75,6 +86,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          event_id: string
           id?: string
           name: string
           price: number
@@ -82,12 +94,20 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          event_id?: string
           id?: string
           name?: string
           price?: number
           team_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "bottles_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bottles_team_id_fkey"
             columns: ["team_id"]
@@ -105,8 +125,10 @@ export type Database = {
           check_in_at: string | null
           closed_at: string | null
           created_at: string
+          event_id: string
           fish_delivered_at: string | null
           id: string
+          notes: string | null
           payment_method: Database["public"]["Enums"]["payment_method"] | null
           people_count: number
           ref_name: string
@@ -125,8 +147,10 @@ export type Database = {
           check_in_at?: string | null
           closed_at?: string | null
           created_at?: string
+          event_id: string
           fish_delivered_at?: string | null
           id?: string
+          notes?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           people_count?: number
           ref_name: string
@@ -145,8 +169,10 @@ export type Database = {
           check_in_at?: string | null
           closed_at?: string | null
           created_at?: string
+          event_id?: string
           fish_delivered_at?: string | null
           id?: string
+          notes?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           people_count?: number
           ref_name?: string
@@ -160,6 +186,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "club_tables_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "club_tables_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
@@ -171,6 +204,95 @@ export type Database = {
             columns: ["zone_id"]
             isOneToOne: false
             referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      events: {
+        Row: {
+          created_at: string
+          created_by: string
+          date: string
+          format_id: string | null
+          headliner: string | null
+          id: string
+          name: string
+          notes: string | null
+          status: Database["public"]["Enums"]["event_status"]
+          team_id: string
+          updated_at: string
+          venue: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          date: string
+          format_id?: string | null
+          headliner?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["event_status"]
+          team_id: string
+          updated_at?: string
+          venue?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          date?: string
+          format_id?: string | null
+          headliner?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["event_status"]
+          team_id?: string
+          updated_at?: string
+          venue?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "events_format_id_fkey"
+            columns: ["format_id"]
+            isOneToOne: false
+            referencedRelation: "formats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      formats: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "formats_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]
@@ -195,6 +317,67 @@ export type Database = {
           id?: string
         }
         Relationships: []
+      }
+      table_orders: {
+        Row: {
+          bottles: Json
+          created_at: string
+          created_by: string
+          event_id: string
+          id: string
+          notes: string | null
+          table_id: string
+          team_id: string
+          total: number
+          type: Database["public"]["Enums"]["order_type"]
+        }
+        Insert: {
+          bottles?: Json
+          created_at?: string
+          created_by: string
+          event_id: string
+          id?: string
+          notes?: string | null
+          table_id: string
+          team_id: string
+          total?: number
+          type: Database["public"]["Enums"]["order_type"]
+        }
+        Update: {
+          bottles?: Json
+          created_at?: string
+          created_by?: string
+          event_id?: string
+          id?: string
+          notes?: string | null
+          table_id?: string
+          team_id?: string
+          total?: number
+          type?: Database["public"]["Enums"]["order_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_orders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_orders_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "club_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_orders_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_invites: {
         Row: {
@@ -385,7 +568,9 @@ export type Database = {
     }
     Enums: {
       alert_kind: "whatsapp_msg" | "bottle_late" | "help_needed"
+      event_status: "upcoming" | "active" | "archived"
       member_status: "active" | "pending"
+      order_type: "checkin" | "reorder"
       payment_method: "cash" | "pos"
       table_status:
         | "arriving"
@@ -526,7 +711,9 @@ export const Constants = {
   public: {
     Enums: {
       alert_kind: ["whatsapp_msg", "bottle_late", "help_needed"],
+      event_status: ["upcoming", "active", "archived"],
       member_status: ["active", "pending"],
+      order_type: ["checkin", "reorder"],
       payment_method: ["cash", "pos"],
       table_status: [
         "arriving",

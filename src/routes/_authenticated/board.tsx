@@ -271,6 +271,8 @@ function BoardPage() {
           />
         );
       })()}
+
+      <BottomNav />
     </div>
   );
 }
@@ -282,14 +284,9 @@ function EmptyState({ isAdmin, hasTables }: { isAdmin: boolean; hasTables: boole
       <h2 className="text-lg font-bold">{hasTables ? "Tutti chiusi" : "Nessun tavolo"}</h2>
       <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">
         {hasTables ? "Cambia filtro per vedere i tavoli chiusi." :
-          isAdmin ? "Aggiungi tavoli e bottiglie dalla configurazione." :
+          isAdmin ? "Aggiungi tavoli dalle impostazioni dell'evento." :
           "L'admin non ha ancora creato i tavoli."}
       </p>
-      {isAdmin && !hasTables && (
-        <Link to="/config" className="inline-flex items-center justify-center mt-6 h-12 px-5 rounded-xl bg-primary text-primary-foreground font-bold">
-          Configurazione
-        </Link>
-      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
@@ -47,8 +47,6 @@ const BOTTLE_TIMEOUT_MS = 15 * 60 * 1000;
 function BoardPage() {
   const { isAdmin, user, teamName, status: teamStatus } = useCurrentTeam();
   const { event, loading: evLoading, team } = useActiveEvent();
-  const navigate = useNavigate();
-  void isAdmin; void navigate;
   const [tables, setTables] = useState<ClubTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);

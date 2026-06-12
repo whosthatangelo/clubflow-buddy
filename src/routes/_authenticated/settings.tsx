@@ -13,7 +13,7 @@ function SettingsLayout() {
     <div className="min-h-screen pb-24">
       <header className="sticky top-0 z-20 backdrop-blur bg-background/85 border-b border-border px-4 py-3 flex items-center gap-3">
         <Link
-          to="/board"
+          to="/events"
           aria-label="Indietro"
           className="h-11 w-11 grid place-items-center rounded-xl bg-secondary"
         >

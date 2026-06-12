@@ -1,11 +1,12 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { useActiveEvent } from "@/hooks/use-active-event";
 import { STATUS_LABEL_SHORT, nextStatus, requiresInput, type TableStatus } from "@/lib/status";
-import { LogOut, Settings, Users, Clock, ChevronRight, StickyNote, ArrowLeftRight, BarChart3 } from "lucide-react";
+import { Settings as SettingsIcon, Users, Clock, ChevronRight, StickyNote, ArrowLeftRight } from "lucide-react";
 import { AlertsBanner } from "@/components/AlertsBanner";
+import { BottomNav } from "@/components/BottomNav";
 import { CheckinSheet } from "@/components/CheckinSheet";
 import { toast } from "sonner";
 
@@ -46,7 +47,6 @@ const BOTTLE_TIMEOUT_MS = 15 * 60 * 1000;
 function BoardPage() {
   const { isAdmin, user, teamName, status: teamStatus } = useCurrentTeam();
   const { event, loading: evLoading, team } = useActiveEvent();
-  const navigate = useNavigate();
   const [tables, setTables] = useState<ClubTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,7 +133,7 @@ function BoardPage() {
     }
   };
 
-  const signOut = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
+  
 
   if (teamStatus === "loading" || evLoading) {
     return <p className="p-6 text-muted-foreground">Caricamento…</p>;
@@ -155,7 +155,7 @@ function BoardPage() {
   }
 
   return (
-    <div className="min-h-screen pb-24">
+    <div className="min-h-screen pb-28">
       <header className="sticky top-0 z-20 backdrop-blur bg-background/85 border-b border-border">
         <div className="px-4 py-3 flex items-center justify-between gap-2">
           <div className="min-w-0">
@@ -165,25 +165,13 @@ function BoardPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Link to="/event/$id" params={{ id: event.id }} aria-label="Impostazioni evento"
+              className="h-11 w-11 grid place-items-center rounded-xl bg-secondary">
+              <SettingsIcon className="w-5 h-5" />
+            </Link>
             <Link to="/events" aria-label="Cambia evento" className="h-11 w-11 grid place-items-center rounded-xl bg-secondary">
               <ArrowLeftRight className="w-5 h-5" />
             </Link>
-            {isAdmin && (
-              <Link to="/analytics" aria-label="Analytics" className="h-11 w-11 grid place-items-center rounded-xl bg-secondary">
-                <BarChart3 className="w-5 h-5" />
-              </Link>
-            )}
-            {isAdmin && (
-              <Link to="/config" aria-label="Configurazione" className="h-11 w-11 grid place-items-center rounded-xl bg-secondary">
-                <Settings className="w-5 h-5" />
-              </Link>
-            )}
-            <Link to="/settings/team" aria-label="Impostazioni" className="h-11 w-11 grid place-items-center rounded-xl bg-secondary">
-              <Users className="w-5 h-5" />
-            </Link>
-            <button type="button" onClick={signOut} aria-label="Esci" className="h-11 w-11 grid place-items-center rounded-xl bg-secondary">
-              <LogOut className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
@@ -281,6 +269,8 @@ function BoardPage() {
           />
         );
       })()}
+
+      <BottomNav />
     </div>
   );
 }
@@ -292,14 +282,9 @@ function EmptyState({ isAdmin, hasTables }: { isAdmin: boolean; hasTables: boole
       <h2 className="text-lg font-bold">{hasTables ? "Tutti chiusi" : "Nessun tavolo"}</h2>
       <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">
         {hasTables ? "Cambia filtro per vedere i tavoli chiusi." :
-          isAdmin ? "Aggiungi tavoli e bottiglie dalla configurazione." :
+          isAdmin ? "Aggiungi tavoli dalle impostazioni dell'evento." :
           "L'admin non ha ancora creato i tavoli."}
       </p>
-      {isAdmin && !hasTables && (
-        <Link to="/config" className="inline-flex items-center justify-center mt-6 h-12 px-5 rounded-xl bg-primary text-primary-foreground font-bold">
-          Configurazione
-        </Link>
-      )}
     </div>
   );
 }

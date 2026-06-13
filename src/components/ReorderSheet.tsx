@@ -44,7 +44,7 @@ export function ReorderSheet({
   const confirm = async () => {
     if (selected.length === 0) return toast.error("Aggiungi almeno una bottiglia");
     setSubmitting(true);
-    const { error } = await supabase.from("table_orders").insert({
+    const { data: order, error } = await supabase.from("table_orders").insert({
       team_id: teamId,
       event_id: eventId,
       table_id: tableId,
@@ -53,15 +53,21 @@ export function ReorderSheet({
       total,
       notes: notes.trim() || null,
       created_by: userId,
-    });
+    }).select("id").single();
     if (error) { setSubmitting(false); return toast.error(error.message); }
 
-    await supabase.from("club_tables").update({
+    const { error: tableError } = await supabase.from("club_tables").update({
       total_amount: +(currentTotal + total).toFixed(2),
       status: "reorder",
       assigned_to: userId,
       bottle_waiting_at: new Date().toISOString(),
     }).eq("id", tableId);
+
+    if (tableError) {
+      if (order) await supabase.from("table_orders").delete().eq("id", order.id);
+      setSubmitting(false);
+      return toast.error(`Riordine non salvato: ${tableError.message}`);
+    }
 
     setSubmitting(false);
     toast.success("Riordine registrato");

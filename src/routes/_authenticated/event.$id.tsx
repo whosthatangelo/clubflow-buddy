@@ -27,7 +27,7 @@ interface ClubTable {
 function EventDetailPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const { isAdmin, teamId, user } = useCurrentTeam();
+  const { isAdmin, teamId, user, status: teamStatus } = useCurrentTeam();
   const [ev, setEv] = useState<EventRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("details");
@@ -101,8 +101,17 @@ function EventDetailPage() {
     navigate({ to: "/event/$id", params: { id: newEv.id } });
   };
 
-  if (loading) return <p className="p-6 text-muted-foreground">Caricamento…</p>;
+  if (loading || teamStatus === "loading") return <p className="p-6 text-muted-foreground">Caricamento…</p>;
   if (!ev || !teamId) return <p className="p-6">Evento non trovato.</p>;
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <h2 className="text-xl font-bold">Solo admin</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Le impostazioni dell'evento sono riservate agli amministratori.</p>
+        <Link to="/board" className="mt-5 inline-flex h-11 px-4 items-center rounded-xl bg-primary text-primary-foreground font-bold">Torna alla board</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pb-32">

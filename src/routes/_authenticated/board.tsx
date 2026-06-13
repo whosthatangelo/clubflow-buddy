@@ -222,7 +222,7 @@ function BoardPage() {
               const z = zoneById(t.zone_id);
               const isMine = t.assigned_to === user?.id;
               const waiting = t.status === "bottle_waiting" && t.bottle_waiting_at;
-              const waitedMs = waiting ? now - new Date(t.bottle_waiting_at!).getTime() : 0;
+              const waitedMs = waiting && t.bottle_waiting_at ? now - new Date(t.bottle_waiting_at).getTime() : 0;
               const waitedMin = Math.floor(waitedMs / 60000);
               const late = waitedMs >= BOTTLE_TIMEOUT_MS;
               const ns = nextStatus(t.status);
@@ -274,10 +274,9 @@ function BoardPage() {
         )}
       </main>
 
-      {checkinFor && (() => {
+      {checkinFor && zoneById(checkinFor.zone_id) && user && teamId && eventId && (() => {
         const z = zoneById(checkinFor.zone_id);
-        if (!z) { toast.error("Tavolo senza zona"); setCheckinFor(null); return null; }
-        if (!user || !teamId || !eventId) return null;
+        if (!z) return null;
         return (
           <CheckinSheet
             tableId={checkinFor.id}

@@ -91,24 +91,6 @@ export const createInvite = createServerFn({ method: "POST" })
       .single();
     if (error || !invite) throw new Error(error?.message ?? "Errore");
 
-    // Aggiungi anche una riga pending in team_members se c'è una email
-    if (invite.email) {
-      await supabaseAdmin
-        .from("team_members")
-        .upsert(
-          {
-            team_id: data.teamId,
-            user_id: userId, // placeholder, non valido — usiamo un'altra strategia
-            role: invite.role,
-            status: "pending",
-          },
-          { onConflict: "team_id,user_id", ignoreDuplicates: true },
-        )
-        .select()
-        .maybeSingle()
-        .then(() => {/* ignored */});
-    }
-
     return invite;
   });
 
@@ -265,6 +247,7 @@ export const changeMemberRole = createServerFn({ method: "POST" })
         .from("team_members")
         .select("role")
         .eq("id", data.memberId)
+      .eq("team_id", data.teamId)
         .maybeSingle();
       if (target?.role === "admin") {
         const { count } = await supabaseAdmin
@@ -280,7 +263,8 @@ export const changeMemberRole = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("team_members")
       .update({ role: data.role })
-      .eq("id", data.memberId);
+      .eq("id", data.memberId)
+      .eq("team_id", data.teamId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { MessageCircle, AlarmClock, HandMetal, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +34,11 @@ const KIND_META: Record<AlertKind, { label: string; Icon: typeof MessageCircle; 
 
 export function AlertsBanner({ userId, teamId, eventId, tablesIndex, peopleIndex = {} }: Props) {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const tablesIndexRef = useRef(tablesIndex);
+
+  useEffect(() => {
+    tablesIndexRef.current = tablesIndex;
+  }, [tablesIndex]);
 
   useEffect(() => {
     if (!teamId) return;
@@ -64,7 +69,7 @@ export function AlertsBanner({ userId, teamId, eventId, tablesIndex, peopleIndex
               if (row.resolved_at || (eventId && row.event_id !== eventId)) return prev;
               const exists = prev.some((a) => a.id === row.id);
               if (!exists) {
-                const tableName = row.table_id ? tablesIndex[row.table_id] : null;
+                const tableName = row.table_id ? tablesIndexRef.current[row.table_id] : null;
                 toast(`${KIND_META[row.kind].label}${tableName ? ` · ${tableName}` : ""}`, {
                   description: row.message ?? undefined,
                 });
@@ -89,7 +94,6 @@ export function AlertsBanner({ userId, teamId, eventId, tablesIndex, peopleIndex
       mounted = false;
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId, eventId]);
 
   const claim = async (a: AlertRow) => {

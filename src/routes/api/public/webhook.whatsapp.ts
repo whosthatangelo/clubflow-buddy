@@ -38,7 +38,7 @@ export const Route = createFileRoute("/api/public/webhook/whatsapp")({
 
           const { data: settings } = await supabaseAdmin
             .from("team_settings")
-            .select("team_id, twilio_whatsapp_number, webhook_secret");
+            .select("team_id, twilio_whatsapp_number, twilio_auth_token, webhook_secret");
 
           const teamSettings = (settings ?? []).find((s) => {
             const n = normalize(s.twilio_whatsapp_number ?? "");

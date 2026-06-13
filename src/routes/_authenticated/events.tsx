@@ -41,7 +41,12 @@ function EventsPage() {
 
   const setActive = async (id: string) => {
     if (!teamId) return;
-    await supabase.from("events").update({ status: "archived" }).eq("team_id", teamId).eq("status", "active");
+    const { error: archiveError } = await supabase
+      .from("events")
+      .update({ status: "archived" })
+      .eq("team_id", teamId)
+      .eq("status", "active");
+    if (archiveError) return toast.error(archiveError.message);
     const { error } = await supabase.from("events").update({ status: "active" }).eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Evento attivato"); load();
@@ -62,13 +67,15 @@ function EventsPage() {
       supabase.from("club_tables").select("ref_name,whatsapp,people_count,zone_id").eq("event_id", ev.id),
     ]);
     if (bts && bts.length > 0) {
-      await supabase.from("bottles").insert(bts.map((b) => ({ team_id: teamId, event_id: newEv.id, name: b.name, price: b.price })));
+      const { error: bottleError } = await supabase.from("bottles").insert(bts.map((b) => ({ team_id: teamId, event_id: newEv.id, name: b.name, price: b.price })));
+      if (bottleError) return toast.error(`Evento creato, ma bottiglie non copiate: ${bottleError.message}`);
     }
     if (tbs && tbs.length > 0) {
-      await supabase.from("club_tables").insert(tbs.map((t) => ({
+      const { error: tableError } = await supabase.from("club_tables").insert(tbs.map((t) => ({
         team_id: teamId, event_id: newEv.id, ref_name: t.ref_name, whatsapp: t.whatsapp,
         people_count: t.people_count, zone_id: t.zone_id, status: "arriving",
       })));
+      if (tableError) return toast.error(`Evento creato, ma tavoli non copiati: ${tableError.message}`);
     }
     toast.success("Clonato"); navigate({ to: "/event/$id", params: { id: newEv.id } });
   };

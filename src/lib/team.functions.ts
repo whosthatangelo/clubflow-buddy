@@ -91,24 +91,6 @@ export const createInvite = createServerFn({ method: "POST" })
       .single();
     if (error || !invite) throw new Error(error?.message ?? "Errore");
 
-    // Aggiungi anche una riga pending in team_members se c'è una email
-    if (invite.email) {
-      await supabaseAdmin
-        .from("team_members")
-        .upsert(
-          {
-            team_id: data.teamId,
-            user_id: userId, // placeholder, non valido — usiamo un'altra strategia
-            role: invite.role,
-            status: "pending",
-          },
-          { onConflict: "team_id,user_id", ignoreDuplicates: true },
-        )
-        .select()
-        .maybeSingle()
-        .then(() => {/* ignored */});
-    }
-
     return invite;
   });
 

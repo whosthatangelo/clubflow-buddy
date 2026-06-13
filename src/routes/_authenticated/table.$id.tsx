@@ -84,7 +84,7 @@ function TableDetail() {
     const ch = supabase
       .channel(`table-${id}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "club_tables", filter: `id=eq.${id}` },
-        (payload) => setTable(payload.new as ClubTable))
+        () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "table_orders", filter: `table_id=eq.${id}` },
         () => load())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "table_activity", filter: `table_id=eq.${id}` },

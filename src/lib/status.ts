@@ -38,6 +38,7 @@ export const STATUS_LABEL_SHORT: Record<TableStatus, string> = {
 };
 
 export function nextStatus(s: TableStatus): TableStatus | null {
+  if (s === "reorder") return "bottle_arrived";
   const i = STATUS_ORDER.indexOf(s);
   if (i < 0 || i >= STATUS_ORDER.length - 1) return null;
   return STATUS_ORDER[i + 1];

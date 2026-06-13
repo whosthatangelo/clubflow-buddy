@@ -21,6 +21,7 @@ interface Props {
   userId: string | undefined;
   teamId: string | null;
   tablesIndex: Record<string, string>;
+  peopleIndex?: Record<string, string>;
 }
 
 const KIND_META: Record<AlertKind, { label: string; Icon: typeof MessageCircle; tone: string }> = {
@@ -29,7 +30,7 @@ const KIND_META: Record<AlertKind, { label: string; Icon: typeof MessageCircle; 
   help_needed: { label: "Serve aiuto", Icon: HandMetal, tone: "bg-warning text-warning-foreground" },
 };
 
-export function AlertsBanner({ userId, teamId, tablesIndex }: Props) {
+export function AlertsBanner({ userId, teamId, tablesIndex, peopleIndex = {} }: Props) {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
 
   useEffect(() => {
@@ -146,7 +147,7 @@ export function AlertsBanner({ userId, teamId, tablesIndex }: Props) {
                 </button>
               ) : (
                 <span className={`flex-1 h-11 grid place-items-center rounded-xl text-xs font-bold ${mine ? "bg-success text-success-foreground" : "bg-secondary text-muted-foreground"}`}>
-                  {mine ? "Tuo" : "Preso da altri"}
+                  {mine ? "Tuo" : `Preso da ${peopleIndex[a.claimed_by ?? ""] ?? "altro operatore"}`}
                 </span>
               )}
               <button

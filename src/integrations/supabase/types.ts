@@ -318,6 +318,64 @@ export type Database = {
         }
         Relationships: []
       }
+      table_activity: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          event_id: string
+          from_status: Database["public"]["Enums"]["table_status"] | null
+          id: string
+          table_id: string
+          team_id: string
+          to_status: Database["public"]["Enums"]["table_status"] | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          event_id: string
+          from_status?: Database["public"]["Enums"]["table_status"] | null
+          id?: string
+          table_id: string
+          team_id: string
+          to_status?: Database["public"]["Enums"]["table_status"] | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          event_id?: string
+          from_status?: Database["public"]["Enums"]["table_status"] | null
+          id?: string
+          table_id?: string
+          team_id?: string
+          to_status?: Database["public"]["Enums"]["table_status"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_activity_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_activity_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "club_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_activity_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_orders: {
         Row: {
           bottles: Json

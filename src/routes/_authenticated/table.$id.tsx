@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { STATUS_LABEL, STATUS_ORDER, nextStatus, requiresInput, type TableStatus } from "@/lib/status";
-import { ArrowLeft, Check, HandMetal, Plus, StickyNote } from "lucide-react";
+import { ArrowLeft, Check, HandMetal, MessageCircle, Plus, StickyNote, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { CheckinSheet, type SelectedBottle } from "@/components/CheckinSheet";
 import { ReorderSheet } from "@/components/ReorderSheet";
@@ -35,6 +35,13 @@ interface OrderRow {
   notes: string | null;
   created_at: string;
 }
+interface ActivityRow {
+  id: string;
+  actor_id: string | null;
+  from_status: TableStatus | null;
+  to_status: TableStatus | null;
+  created_at: string;
+}
 
 function TableDetail() {
   const { id } = Route.useParams();
@@ -43,6 +50,8 @@ function TableDetail() {
   const [table, setTable] = useState<ClubTable | null>(null);
   const [zone, setZone] = useState<Zone | null>(null);
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [people, setPeople] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
@@ -53,12 +62,20 @@ function TableDetail() {
     if (!t) { setLoading(false); return; }
     setTable(t as ClubTable);
     setNotesDraft((t as ClubTable).notes ?? "");
-    const [{ data: z }, { data: o }] = await Promise.all([
+    const [{ data: z }, { data: o }, { data: a }] = await Promise.all([
       t.zone_id ? supabase.from("zones").select("*").eq("id", t.zone_id).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from("table_orders").select("*").eq("table_id", id).order("created_at"),
+      supabase.from("table_activity").select("id,actor_id,from_status,to_status,created_at").eq("table_id", id).order("created_at", { ascending: false }),
     ]);
     setZone((z as Zone) ?? null);
     setOrders((o ?? []) as unknown as OrderRow[]);
+    const rows = (a ?? []) as ActivityRow[];
+    setActivity(rows);
+    const actorIds = [...new Set(rows.flatMap((row) => row.actor_id ? [row.actor_id] : []))];
+    if (actorIds.length > 0) {
+      const { data: profiles } = await supabase.from("profiles").select("id,display_name,email").in("id", actorIds);
+      setPeople(Object.fromEntries((profiles ?? []).map((p) => [p.id, p.display_name ?? p.email ?? "Operatore"])));
+    }
     setLoading(false);
   }, [id]);
 
@@ -67,8 +84,10 @@ function TableDetail() {
     const ch = supabase
       .channel(`table-${id}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "club_tables", filter: `id=eq.${id}` },
-        (payload) => setTable(payload.new as ClubTable))
+        () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "table_orders", filter: `table_id=eq.${id}` },
+        () => load())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "table_activity", filter: `table_id=eq.${id}` },
         () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -82,7 +101,7 @@ function TableDetail() {
     const now = new Date().toISOString();
     const { error } = await supabase.from("club_tables").update({
       status: ns,
-      assigned_to: table.assigned_to ?? user?.id ?? null,
+      assigned_to: user?.id ?? null,
       ...(ns === "fish_delivered" ? { fish_delivered_at: now } : {}),
       ...(ns === "bottle_waiting" ? { bottle_waiting_at: now } : {}),
       ...(ns === "bottle_arrived" ? { bottle_arrived_at: now } : {}),
@@ -107,6 +126,16 @@ function TableDetail() {
     toast.success("Alert inviato allo staff");
   };
 
+  const sendRequest = async (request: string) => {
+    if (!teamId || !table) return;
+    const { error } = await supabase.from("alerts").insert({
+      team_id: teamId, event_id: table.event_id, kind: "help_needed", table_id: id,
+      message: `${request} · ${table.ref_name}`,
+    });
+    if (error) return toast.error(error.message);
+    toast.success(`${request}: richiesta inviata`);
+  };
+
   const saveNotes = async () => {
     if (!table) return;
     const { error } = await supabase.from("club_tables").update({ notes: notesDraft.trim() || null }).eq("id", id);
@@ -125,6 +154,9 @@ function TableDetail() {
   const ns = nextStatus(table.status);
   const ordersTotal = orders.reduce((s, o) => s + Number(o.total), 0);
   const canReorder = table.status !== "arriving";
+  const whatsappHref = table.whatsapp
+    ? `https://wa.me/${table.whatsapp.replace(/\D/g, "")}`
+    : null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -224,13 +256,40 @@ function TableDetail() {
           )}
         </div>
 
-        {/* WhatsApp */}
-        {table.whatsapp && (
+        {activity.length > 0 && (
           <div className="rounded-2xl bg-card border border-border p-4">
-            <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground">WhatsApp</h3>
-            <p className="font-mono mt-1">{table.whatsapp}</p>
+            <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Registro attività</h3>
+            <div className="space-y-3">
+              {activity.map((item) => (
+                <div key={item.id} className="flex gap-3 text-sm">
+                  <div className="h-8 w-8 shrink-0 rounded-full bg-secondary grid place-items-center"><UserRound className="w-4 h-4" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p><span className="font-bold">{people[item.actor_id ?? ""] ?? "Sistema"}</span> ha avanzato a <span className="font-semibold">{item.to_status ? STATUS_LABEL[item.to_status] : "—"}</span></p>
+                    <p className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
+
+        {whatsappHref && (
+          <a href={whatsappHref} target="_blank" rel="noreferrer"
+            className="w-full h-12 rounded-2xl bg-success text-success-foreground font-black inline-flex items-center justify-center gap-2">
+            <MessageCircle className="w-5 h-5" /> WhatsApp
+          </a>
+        )}
+
+        <div className="rounded-2xl bg-card border border-border p-4">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Richieste rapide</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {["Manca ghiaccio", "Manca tonica", "Serve cameriere", "Altra assistenza"].map((request) => (
+              <button key={request} type="button" onClick={() => sendRequest(request)} className="min-h-11 rounded-xl bg-secondary px-3 text-sm font-bold">
+                {request}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <button type="button" onClick={callHelp}
           className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2">

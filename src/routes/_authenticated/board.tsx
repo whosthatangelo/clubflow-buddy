@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { useActiveEvent } from "@/hooks/use-active-event";
 import { STATUS_LABEL_SHORT, nextStatus, requiresInput, type TableStatus } from "@/lib/status";
-import { Settings as SettingsIcon, Users, Clock, ChevronRight, StickyNote, ArrowLeftRight } from "lucide-react";
+import { Settings as SettingsIcon, Users, Clock, ChevronRight, StickyNote, ArrowLeftRight, MessageCircle, PackageCheck } from "lucide-react";
 import { AlertsBanner } from "@/components/AlertsBanner";
 import { BottomNav } from "@/components/BottomNav";
 import { CheckinSheet } from "@/components/CheckinSheet";
@@ -28,6 +28,7 @@ interface ClubTable {
   team_id: string;
   event_id: string;
   notes: string | null;
+  whatsapp: string | null;
 }
 
 const STATUS_COLOR: Record<TableStatus, string> = {
@@ -49,6 +50,7 @@ function BoardPage() {
   const { event, loading: evLoading, team } = useActiveEvent();
   const [tables, setTables] = useState<ClubTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [people, setPeople] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "open">("open");
   const [now, setNow] = useState(() => Date.now());
@@ -62,13 +64,19 @@ function BoardPage() {
     if (!teamId || !eventId) { setLoading(false); return; }
     let mounted = true;
     const load = async () => {
-      const [{ data: t }, { data: z }] = await Promise.all([
+      const [{ data: t }, { data: z }, { data: members }] = await Promise.all([
         supabase.from("club_tables").select("*").eq("event_id", eventId).order("created_at"),
         supabase.from("zones").select("*").eq("team_id", teamId).order("name"),
+        supabase.from("team_members").select("user_id").eq("team_id", teamId).eq("status", "active"),
       ]);
       if (!mounted) return;
       setTables((t ?? []) as ClubTable[]);
       setZones((z ?? []) as Zone[]);
+      const ids = (members ?? []).flatMap((m) => m.user_id ? [m.user_id] : []);
+      if (ids.length > 0) {
+        const { data: profiles } = await supabase.from("profiles").select("id,display_name,email").in("id", ids);
+        if (mounted) setPeople(Object.fromEntries((profiles ?? []).map((p) => [p.id, p.display_name ?? p.email ?? "Operatore"])));
+      }
       setLoading(false);
     };
     load();
@@ -113,6 +121,7 @@ function BoardPage() {
   const zoneById = (id: string | null) => zones.find((z) => z.id === id);
   const visible = filter === "open" ? tables.filter((t) => t.status !== "closed") : tables;
   const tablesIndex = useMemo(() => Object.fromEntries(tables.map((t) => [t.id, t.ref_name])), [tables]);
+  const waitingTables = visible.filter((t) => t.status === "fish_delivered" || t.status === "bottle_waiting" || t.status === "reorder");
 
   const advance = async (t: ClubTable) => {
     if (requiresInput(t.status)) { setCheckinFor(t); return; }
@@ -121,7 +130,7 @@ function BoardPage() {
     const nowIso = new Date().toISOString();
     const { error } = await supabase.from("club_tables").update({
       status: ns,
-      assigned_to: t.assigned_to ?? user?.id ?? null,
+      assigned_to: user?.id ?? null,
       ...(ns === "fish_delivered" ? { fish_delivered_at: nowIso } : {}),
       ...(ns === "bottle_waiting" ? { bottle_waiting_at: nowIso } : {}),
       ...(ns === "bottle_arrived" ? { bottle_arrived_at: nowIso } : {}),
@@ -185,9 +194,24 @@ function BoardPage() {
         </div>
       </header>
 
-      <AlertsBanner userId={user?.id} teamId={teamId} tablesIndex={tablesIndex} />
+      <AlertsBanner userId={user?.id} teamId={teamId} eventId={eventId} tablesIndex={tablesIndex} peopleIndex={people} />
 
       <main className="p-4">
+        {waitingTables.length > 0 && (
+          <section className="mb-4 rounded-2xl border-2 border-warning bg-warning/10 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 font-black"><PackageCheck className="w-5 h-5 text-warning" /> Ordini in attesa</div>
+              <span className="h-7 min-w-7 px-2 rounded-full bg-warning text-warning-foreground grid place-items-center text-sm font-black">{waitingTables.length}</span>
+            </div>
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {waitingTables.map((t) => (
+                <Link key={t.id} to="/table/$id" params={{ id: t.id }} className="shrink-0 rounded-xl bg-background border border-border px-3 py-2 text-sm font-bold">
+                  {t.ref_name} <span className="text-xs text-muted-foreground">· {STATUS_LABEL_SHORT[t.status]}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
         {loading ? (
           <p className="text-center text-muted-foreground py-12">Caricamento…</p>
         ) : visible.length === 0 ? (
@@ -231,17 +255,17 @@ function BoardPage() {
                           </span>
                         )}
                         {isMine && <span className="text-[10px] uppercase tracking-wide font-bold text-primary">Tuo</span>}
+                        {t.assigned_to && !isMine && <span className="text-[10px] font-bold text-muted-foreground truncate max-w-24">{people[t.assigned_to] ?? "In carico"}</span>}
                       </div>
                     </div>
                   </Link>
-                  {ns && (
-                    <button
-                      type="button"
-                      onClick={() => advance(t)}
-                      className="mt-3 w-full h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm inline-flex items-center justify-center gap-1"
-                    >
-                      {requiresInput(t.status) ? "Check-in" : STATUS_LABEL_SHORT[ns]} <ChevronRight className="w-4 h-4" />
-                    </button>
+                  {(ns || t.whatsapp) && (
+                    <div className="mt-3 flex gap-2">
+                      {t.whatsapp && <a href={`https://wa.me/${t.whatsapp.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${t.ref_name}`} className="h-11 w-11 shrink-0 rounded-xl bg-success text-success-foreground grid place-items-center"><MessageCircle className="w-5 h-5" /></a>}
+                      {ns && <button type="button" onClick={() => advance(t)} className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm inline-flex items-center justify-center gap-1">
+                        {requiresInput(t.status) ? "Check-in" : STATUS_LABEL_SHORT[ns]} <ChevronRight className="w-4 h-4" />
+                      </button>}
+                    </div>
                   )}
                 </div>
               );

@@ -87,6 +87,8 @@ function TableDetail() {
         (payload) => setTable(payload.new as ClubTable))
       .on("postgres_changes", { event: "*", schema: "public", table: "table_orders", filter: `table_id=eq.${id}` },
         () => load())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "table_activity", filter: `table_id=eq.${id}` },
+        () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [id, load]);
@@ -99,7 +101,7 @@ function TableDetail() {
     const now = new Date().toISOString();
     const { error } = await supabase.from("club_tables").update({
       status: ns,
-      assigned_to: table.assigned_to ?? user?.id ?? null,
+      assigned_to: user?.id ?? null,
       ...(ns === "fish_delivered" ? { fish_delivered_at: now } : {}),
       ...(ns === "bottle_waiting" ? { bottle_waiting_at: now } : {}),
       ...(ns === "bottle_arrived" ? { bottle_arrived_at: now } : {}),
@@ -122,6 +124,16 @@ function TableDetail() {
     });
     if (error) return toast.error(error.message);
     toast.success("Alert inviato allo staff");
+  };
+
+  const sendRequest = async (request: string) => {
+    if (!teamId || !table) return;
+    const { error } = await supabase.from("alerts").insert({
+      team_id: teamId, event_id: table.event_id, kind: "help_needed", table_id: id,
+      message: `${request} · ${table.ref_name}`,
+    });
+    if (error) return toast.error(error.message);
+    toast.success(`${request}: richiesta inviata`);
   };
 
   const saveNotes = async () => {
@@ -267,6 +279,17 @@ function TableDetail() {
             <MessageCircle className="w-5 h-5" /> WhatsApp
           </a>
         )}
+
+        <div className="rounded-2xl bg-card border border-border p-4">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Richieste rapide</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {["Manca ghiaccio", "Manca tonica", "Serve cameriere", "Altra assistenza"].map((request) => (
+              <button key={request} type="button" onClick={() => sendRequest(request)} className="min-h-11 rounded-xl bg-secondary px-3 text-sm font-bold">
+                {request}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <button type="button" onClick={callHelp}
           className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2">

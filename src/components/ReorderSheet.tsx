@@ -59,6 +59,8 @@ export function ReorderSheet({
     await supabase.from("club_tables").update({
       total_amount: +(currentTotal + total).toFixed(2),
       status: "reorder",
+      assigned_to: userId,
+      bottle_waiting_at: new Date().toISOString(),
     }).eq("id", tableId);
 
     setSubmitting(false);

@@ -130,7 +130,7 @@ function BoardPage() {
     const nowIso = new Date().toISOString();
     const { error } = await supabase.from("club_tables").update({
       status: ns,
-      assigned_to: t.assigned_to ?? user?.id ?? null,
+      assigned_to: user?.id ?? null,
       ...(ns === "fish_delivered" ? { fish_delivered_at: nowIso } : {}),
       ...(ns === "bottle_waiting" ? { bottle_waiting_at: nowIso } : {}),
       ...(ns === "bottle_arrived" ? { bottle_arrived_at: nowIso } : {}),
@@ -259,12 +259,12 @@ function BoardPage() {
                       </div>
                     </div>
                   </Link>
-                  {ns && (
+                  {(ns || t.whatsapp) && (
                     <div className="mt-3 flex gap-2">
                       {t.whatsapp && <a href={`https://wa.me/${t.whatsapp.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${t.ref_name}`} className="h-11 w-11 shrink-0 rounded-xl bg-success text-success-foreground grid place-items-center"><MessageCircle className="w-5 h-5" /></a>}
-                      <button type="button" onClick={() => advance(t)} className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm inline-flex items-center justify-center gap-1">
+                      {ns && <button type="button" onClick={() => advance(t)} className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm inline-flex items-center justify-center gap-1">
                         {requiresInput(t.status) ? "Check-in" : STATUS_LABEL_SHORT[ns]} <ChevronRight className="w-4 h-4" />
-                      </button>
+                      </button>}
                     </div>
                   )}
                 </div>

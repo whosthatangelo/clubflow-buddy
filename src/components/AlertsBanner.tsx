@@ -94,7 +94,6 @@ export function AlertsBanner({ userId, teamId, eventId, tablesIndex, peopleIndex
       mounted = false;
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId, eventId]);
 
   const claim = async (a: AlertRow) => {

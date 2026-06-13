@@ -8,6 +8,7 @@ export type AlertKind = "whatsapp_msg" | "bottle_late" | "help_needed";
 export interface AlertRow {
   id: string;
   team_id: string;
+  event_id: string | null;
   table_id: string | null;
   kind: AlertKind;
   message: string | null;

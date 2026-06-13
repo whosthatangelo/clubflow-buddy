@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { useActiveEvent } from "@/hooks/use-active-event";
 import { STATUS_LABEL_SHORT, nextStatus, requiresInput, type TableStatus } from "@/lib/status";
-import { Settings as SettingsIcon, Users, Clock, ChevronRight, StickyNote, ArrowLeftRight, MessageCircle, PackageClock } from "lucide-react";
+import { Settings as SettingsIcon, Users, Clock, ChevronRight, StickyNote, ArrowLeftRight, MessageCircle, PackageCheck } from "lucide-react";
 import { AlertsBanner } from "@/components/AlertsBanner";
 import { BottomNav } from "@/components/BottomNav";
 import { CheckinSheet } from "@/components/CheckinSheet";
@@ -28,6 +28,7 @@ interface ClubTable {
   team_id: string;
   event_id: string;
   notes: string | null;
+  whatsapp: string | null;
 }
 
 const STATUS_COLOR: Record<TableStatus, string> = {
@@ -199,7 +200,7 @@ function BoardPage() {
         {waitingTables.length > 0 && (
           <section className="mb-4 rounded-2xl border-2 border-warning bg-warning/10 p-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 font-black"><PackageClock className="w-5 h-5 text-warning" /> Ordini in attesa</div>
+              <div className="flex items-center gap-2 font-black"><PackageCheck className="w-5 h-5 text-warning" /> Ordini in attesa</div>
               <span className="h-7 min-w-7 px-2 rounded-full bg-warning text-warning-foreground grid place-items-center text-sm font-black">{waitingTables.length}</span>
             </div>
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">

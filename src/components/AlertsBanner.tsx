@@ -20,6 +20,7 @@ export interface AlertRow {
 interface Props {
   userId: string | undefined;
   teamId: string | null;
+  eventId?: string | null;
   tablesIndex: Record<string, string>;
   peopleIndex?: Record<string, string>;
 }
@@ -30,19 +31,21 @@ const KIND_META: Record<AlertKind, { label: string; Icon: typeof MessageCircle; 
   help_needed: { label: "Serve aiuto", Icon: HandMetal, tone: "bg-warning text-warning-foreground" },
 };
 
-export function AlertsBanner({ userId, teamId, tablesIndex, peopleIndex = {} }: Props) {
+export function AlertsBanner({ userId, teamId, eventId, tablesIndex, peopleIndex = {} }: Props) {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
 
   useEffect(() => {
     if (!teamId) return;
     let mounted = true;
     const load = async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("alerts")
         .select("*")
         .eq("team_id", teamId)
         .is("resolved_at", null)
         .order("created_at", { ascending: false });
+      if (eventId) query = query.eq("event_id", eventId);
+      const { data } = await query;
       if (!mounted) return;
       setAlerts((data ?? []) as AlertRow[]);
     };
@@ -57,7 +60,7 @@ export function AlertsBanner({ userId, teamId, tablesIndex, peopleIndex = {} }: 
           setAlerts((prev) => {
             if (payload.eventType === "INSERT") {
               const row = payload.new as AlertRow;
-              if (row.resolved_at) return prev;
+              if (row.resolved_at || (eventId && row.event_id !== eventId)) return prev;
               const exists = prev.some((a) => a.id === row.id);
               if (!exists) {
                 const tableName = row.table_id ? tablesIndex[row.table_id] : null;
@@ -86,7 +89,7 @@ export function AlertsBanner({ userId, teamId, tablesIndex, peopleIndex = {} }: 
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamId]);
+  }, [teamId, eventId]);
 
   const claim = async (a: AlertRow) => {
     if (!userId) return;

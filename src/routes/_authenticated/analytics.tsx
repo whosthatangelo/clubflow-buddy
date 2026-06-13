@@ -359,7 +359,8 @@ function PerHeadliner({ events, orders }: { events: EventRow[]; orders: OrderRow
     events.forEach((e) => {
       const key = e.headliner?.trim() || "—";
       if (!map.has(key)) map.set(key, { events: 0, revenue: 0, tables: new Set() });
-      map.get(key)!.events++;
+      const group = map.get(key);
+      if (group) group.events++;
     });
     orders.forEach((o) => {
       const ev = events.find((e) => e.id === o.event_id);

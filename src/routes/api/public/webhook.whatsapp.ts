@@ -12,6 +12,7 @@ export const Route = createFileRoute("/api/public/webhook/whatsapp")({
         try {
           const contentType = request.headers.get("content-type") ?? "";
           let from = "", to = "", message = "";
+          let formParams: URLSearchParams | null = null;
           if (contentType.includes("application/json")) {
             const body = (await request.json().catch(() => null)) as
               | { from?: string; to?: string; message?: string } | null;
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/api/public/webhook/whatsapp")({
           } else {
             const text = await request.text();
             const p = new URLSearchParams(text);
+            formParams = p;
             from = p.get("From") ?? p.get("from") ?? "";
             to = p.get("To") ?? p.get("to") ?? "";
             message = p.get("Body") ?? p.get("message") ?? "";
@@ -45,7 +47,25 @@ export const Route = createFileRoute("/api/public/webhook/whatsapp")({
           if (!teamSettings) return new Response("No team configured for this number", { status: 404 });
 
           const provided = request.headers.get("x-webhook-secret");
-          if (provided && provided !== teamSettings.webhook_secret) return new Response("Unauthorized", { status: 401 });
+          const twilioSignature = request.headers.get("x-twilio-signature");
+          let authorized = false;
+          if (twilioSignature && formParams && teamSettings.twilio_auth_token) {
+            const sorted = Array.from(formParams.entries()).sort(([a], [b]) => a.localeCompare(b));
+            const signedPayload = request.url + sorted.map(([key, value]) => `${key}${value}`).join("");
+            const key = await crypto.subtle.importKey(
+              "raw",
+              new TextEncoder().encode(teamSettings.twilio_auth_token),
+              { name: "HMAC", hash: "SHA-1" },
+              false,
+              ["sign"],
+            );
+            const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedPayload));
+            const expected = btoa(String.fromCharCode(...new Uint8Array(digest)));
+            authorized = expected === twilioSignature;
+          } else if (provided && teamSettings.webhook_secret) {
+            authorized = provided === teamSettings.webhook_secret;
+          }
+          if (!authorized) return new Response("Unauthorized", { status: 401 });
 
           // Active event for this team
           const { data: activeEvents } = await supabaseAdmin
@@ -83,7 +103,7 @@ export const Route = createFileRoute("/api/public/webhook/whatsapp")({
             return new Response("DB error", { status: 500 });
           }
 
-          return Response.json({ matched: !!matchId, team_id: teamSettings.team_id, event_id: eventId, table_id: matchId });
+          return Response.json({ matched: !!matchId });
         } catch (e) {
           console.error("[whatsapp webhook] crash", e);
           return new Response("Server error", { status: 500 });

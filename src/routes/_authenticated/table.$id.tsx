@@ -140,6 +140,7 @@ function TableDetail() {
     if (!table) return;
     const { error } = await supabase.from("club_tables").update({ notes: notesDraft.trim() || null }).eq("id", id);
     if (error) return toast.error(error.message);
+    setTable((current) => current ? { ...current, notes: notesDraft.trim() || null } : current);
     toast.success("Note salvate");
   };
 
@@ -321,8 +322,6 @@ function TableDetail() {
           onDone={() => { setCheckinOpen(false); load(); }}
         />
       )}
-      {checkinOpen && !zone && (() => { toast.error("Tavolo senza zona"); setCheckinOpen(false); return null; })()}
-
       {reorderOpen && user && teamId && (
         <ReorderSheet
           tableId={table.id}

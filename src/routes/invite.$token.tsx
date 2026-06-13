@@ -21,6 +21,7 @@ function InvitePage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signup");
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   const acceptFn = useServerFn(acceptInvite);
 
@@ -54,15 +55,19 @@ function InvitePage() {
     e.preventDefault();
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: `${window.location.origin}/invite/${token}`,
             data: { display_name: name || email.split("@")[0] },
           },
         });
         if (error) throw error;
+        if (!data.session) {
+          setConfirmationSent(true);
+          return;
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -101,6 +106,15 @@ function InvitePage() {
   }
 
   // needs-auth
+  if (confirmationSent) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <h2 className="text-xl font-bold">Controlla la tua email</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Conferma l'indirizzo email: tornerai qui e l'invito verrà accettato automaticamente.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10">
       <div className="w-full max-w-sm">

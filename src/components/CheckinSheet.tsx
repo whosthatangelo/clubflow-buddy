@@ -67,7 +67,7 @@ export function CheckinSheet({
     const total = totalSelected;
     const now = new Date().toISOString();
 
-    const { error: orderErr } = await supabase.from("table_orders").insert({
+    const { data: order, error: orderErr } = await supabase.from("table_orders").insert({
       team_id: teamId,
       event_id: eventId,
       table_id: tableId,
@@ -75,7 +75,7 @@ export function CheckinSheet({
       bottles: selected as unknown as never,
       total,
       created_by: userId,
-    });
+    }).select("id").single();
     if (orderErr) { setSubmitting(false); return toast.error(orderErr.message); }
 
     const { error: tErr } = await supabase.from("club_tables").update({
@@ -88,7 +88,10 @@ export function CheckinSheet({
     }).eq("id", tableId);
 
     setSubmitting(false);
-    if (tErr) return toast.error(tErr.message);
+    if (tErr) {
+      if (order) await supabase.from("table_orders").delete().eq("id", order.id);
+      return toast.error(`Check-in non salvato: ${tErr.message}`);
+    }
     toast.success("Check-in confermato");
     onDone();
   };

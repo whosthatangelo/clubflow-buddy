@@ -154,7 +154,7 @@ function TableDetail() {
 
   const ns = nextStatus(table.status);
   const ordersTotal = orders.reduce((s, o) => s + Number(o.total), 0);
-  const canReorder = table.status !== "arriving";
+  const canReorder = table.status !== "arriving" && table.status !== "closed";
   const whatsappHref = table.whatsapp
     ? `https://wa.me/${table.whatsapp.replace(/\D/g, "")}`
     : null;

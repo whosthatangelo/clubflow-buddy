@@ -137,7 +137,7 @@ export function CheckinSheet({
             </div>
             <div className="flex justify-between text-base pt-2 border-t border-border">
               <span className="font-bold">{delta > 0 ? "Mancano" : delta < 0 ? "Extra" : "Coperto"}</span>
-              <span className={`font-black tabular-nums ${delta > 0 ? "text-warning" : delta < 0 ? "text-destructive" : "text-success"}`}>
+              <span className={`font-black tabular-nums ${delta > 0 ? "text-warning" : "text-success"}`}>
                 €{Math.abs(delta).toFixed(2)}
               </span>
             </div>

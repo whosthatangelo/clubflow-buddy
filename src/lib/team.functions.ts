@@ -247,6 +247,7 @@ export const changeMemberRole = createServerFn({ method: "POST" })
         .from("team_members")
         .select("role")
         .eq("id", data.memberId)
+      .eq("team_id", data.teamId)
         .maybeSingle();
       if (target?.role === "admin") {
         const { count } = await supabaseAdmin
@@ -262,7 +263,8 @@ export const changeMemberRole = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("team_members")
       .update({ role: data.role })
-      .eq("id", data.memberId);
+      .eq("id", data.memberId)
+      .eq("team_id", data.teamId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

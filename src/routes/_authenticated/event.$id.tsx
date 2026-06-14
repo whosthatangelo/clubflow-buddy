@@ -3,14 +3,14 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
-import { ArrowLeft, Trash2, CheckCircle2, Archive, Copy, Plus, Play, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, Trash2, CheckCircle2, Archive, Copy, Plus, Play, Settings as SettingsIcon, Users } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/event/$id")({
   component: EventDetailPage,
 });
 
-type Tab = "details" | "zones" | "bottles" | "tables";
+type Tab = "details" | "staff" | "zones" | "bottles" | "tables";
 
 interface EventRow {
   id: string; name: string; date: string; headliner: string | null;
@@ -134,6 +134,7 @@ function EventDetailPage() {
         <div className="mt-3 flex gap-2 overflow-x-auto -mx-1 px-1">
           {([
             ["details", "Dettagli", SettingsIcon],
+            ["staff", "Staff", Users],
             ["zones", "Zone", null],
             ["bottles", "Bottiglie", null],
             ["tables", "Tavoli", null],
@@ -151,6 +152,7 @@ function EventDetailPage() {
           <DetailsTab ev={ev} setEv={setEv} teamId={teamId} isAdmin={isAdmin}
             onSave={save} onActivate={activate} onArchive={archive} onDelete={del} onClone={clone} />
         )}
+        {tab === "staff" && <EventStaffTab teamId={teamId} eventId={ev.id} />}
         {tab === "zones" && <ZonesTab teamId={teamId} />}
         {tab === "bottles" && <BottlesTab teamId={teamId} eventId={ev.id} />}
         {tab === "tables" && <TablesTab teamId={teamId} eventId={ev.id} />}

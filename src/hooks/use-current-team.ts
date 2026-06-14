@@ -84,10 +84,9 @@ export function useCurrentTeam(): CurrentTeam {
   }, [user, fetchTeam]);
 
   const selectTeam = useCallback((nextTeamId: string) => {
-    if (!teams.some((team) => team.id === nextTeamId)) return;
     window.localStorage.setItem(ACTIVE_TEAM_KEY, nextTeamId);
     window.dispatchEvent(new Event(TEAM_CHANGED_EVENT));
-  }, [teams]);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (user) await fetchTeam(user.id);

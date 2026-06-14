@@ -161,6 +161,89 @@ function EventDetailPage() {
   );
 }
 
+/* ============ EVENT STAFF ============ */
+interface StaffMember {
+  userId: string;
+  name: string;
+  email: string | null;
+  role: "admin" | "staff";
+}
+
+function EventStaffTab({ teamId, eventId }: { teamId: string; eventId: string }) {
+  const [members, setMembers] = useState<StaffMember[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [{ data: memberships }, { data: assignments }] = await Promise.all([
+      supabase.from("team_members").select("user_id,role").eq("team_id", teamId).eq("status", "active"),
+      supabase.from("event_members").select("user_id").eq("event_id", eventId),
+    ]);
+    const userIds = (memberships ?? []).map((membership) => membership.user_id);
+    const { data: profiles } = userIds.length > 0
+      ? await supabase.from("profiles").select("id,display_name,email").in("id", userIds)
+      : { data: [] };
+    const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+    setMembers((memberships ?? []).map((membership) => {
+      const profile = profileById.get(membership.user_id);
+      return {
+        userId: membership.user_id,
+        name: profile?.display_name ?? profile?.email ?? "Operatore",
+        email: profile?.email ?? null,
+        role: membership.role,
+      };
+    }));
+    setSelected(new Set((assignments ?? []).map((assignment) => assignment.user_id)));
+    setLoading(false);
+  }, [teamId, eventId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = async (member: StaffMember) => {
+    const isAssigned = selected.has(member.userId);
+    if (isAssigned && member.role === "admin") return;
+    const { error } = isAssigned
+      ? await supabase.from("event_members").delete().eq("event_id", eventId).eq("user_id", member.userId)
+      : await supabase.from("event_members").insert({ event_id: eventId, team_id: teamId, user_id: member.userId });
+    if (error) return toast.error(error.message);
+    setSelected((current) => {
+      const next = new Set(current);
+      if (isAssigned) next.delete(member.userId); else next.add(member.userId);
+      return next;
+    });
+  };
+
+  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">Caricamento staff…</p>;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-black">Staff della serata</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Seleziona chi partecipa. Gli admin mantengono sempre accesso all’evento.</p>
+      </div>
+      <div className="space-y-2">
+        {members.map((member) => {
+          const assigned = selected.has(member.userId);
+          return (
+            <button key={member.userId} type="button" onClick={() => toggle(member)}
+              className={`w-full rounded-xl border p-3 flex items-center gap-3 text-left ${assigned ? "border-primary bg-primary/10" : "border-border bg-card"}`}>
+              <span className={`h-6 w-6 rounded-lg border grid place-items-center ${assigned ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                {assigned && <CheckCircle2 className="w-4 h-4" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-bold">{member.name}</span>
+                <span className="block truncate text-xs text-muted-foreground">{member.email ?? "Nessuna email"} · {member.role === "admin" ? "Admin" : "Staff"}</span>
+              </span>
+              {member.role === "admin" && <span className="text-[10px] font-bold uppercase text-primary">Sempre</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ============ DETAILS ============ */
 function DetailsTab({
   ev, setEv, teamId, isAdmin, onSave, onActivate, onArchive, onDelete, onClone,

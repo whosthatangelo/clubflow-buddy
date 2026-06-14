@@ -8,6 +8,7 @@ import { Settings as SettingsIcon, Users, Clock, ChevronRight, StickyNote, Arrow
 import { AlertsBanner } from "@/components/AlertsBanner";
 import { BottomNav } from "@/components/BottomNav";
 import { CheckinSheet } from "@/components/CheckinSheet";
+import { TeamSwitcher } from "@/components/TeamSwitcher";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/board")({
@@ -46,7 +47,7 @@ const STATUS_COLOR: Record<TableStatus, string> = {
 const BOTTLE_TIMEOUT_MS = 15 * 60 * 1000;
 
 function BoardPage() {
-  const { isAdmin, user, teamName, status: teamStatus } = useCurrentTeam();
+  const { isAdmin, user, status: teamStatus } = useCurrentTeam();
   const { event, loading: evLoading, team } = useActiveEvent();
   const [tables, setTables] = useState<ClubTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -170,7 +171,7 @@ function BoardPage() {
           <div className="min-w-0">
             <h1 className="text-xl font-black tracking-tight truncate">{event.name}</h1>
             <p className="text-xs text-muted-foreground -mt-0.5 truncate">
-              {teamName} · {tables.filter((t) => t.status !== "closed").length} aperti{event.headliner ? ` · ${event.headliner}` : ""}
+              <TeamSwitcher /> · {tables.filter((t) => t.status !== "closed").length} aperti{event.headliner ? ` · ${event.headliner}` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">

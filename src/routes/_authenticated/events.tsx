@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
 import { BottomNav } from "@/components/BottomNav";
+import { TeamSwitcher } from "@/components/TeamSwitcher";
 import { Plus, Calendar, Star, MapPin, CheckCircle2, Copy, Settings, LogOut, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
@@ -93,7 +94,7 @@ function EventsPage() {
     <div className="min-h-screen pb-28">
       <header className="sticky top-0 z-20 backdrop-blur bg-background/85 border-b border-border px-4 py-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="text-xl font-black truncate">{teamName ?? "TableFlow"}</h1>
+          <h1 className="text-xl font-black truncate"><TeamSwitcher /></h1>
           <p className="text-xs text-muted-foreground -mt-0.5">{isAdmin ? "Admin" : "Staff"}</p>
         </div>
         <div className="relative shrink-0">

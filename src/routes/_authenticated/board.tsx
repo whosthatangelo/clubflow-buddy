@@ -65,15 +65,15 @@ function BoardPage() {
     if (!teamId || !eventId) { setLoading(false); return; }
     let mounted = true;
     const load = async () => {
-      const [{ data: t }, { data: z }, { data: members }] = await Promise.all([
+      const [{ data: t }, { data: z }, { data: assignments }] = await Promise.all([
         supabase.from("club_tables").select("*").eq("event_id", eventId).order("created_at"),
         supabase.from("zones").select("*").eq("team_id", teamId).order("name"),
-        supabase.from("team_members").select("user_id").eq("team_id", teamId).eq("status", "active"),
+        supabase.from("event_members").select("user_id").eq("event_id", eventId),
       ]);
       if (!mounted) return;
       setTables((t ?? []) as ClubTable[]);
       setZones((z ?? []) as Zone[]);
-      const ids = (members ?? []).flatMap((m) => m.user_id ? [m.user_id] : []);
+      const ids = (assignments ?? []).flatMap((member) => member.user_id ? [member.user_id] : []);
       if (ids.length > 0) {
         const { data: profiles } = await supabase.from("profiles").select("id,display_name,email").in("id", ids);
         if (mounted) setPeople(Object.fromEntries((profiles ?? []).map((p) => [p.id, p.display_name ?? p.email ?? "Operatore"])));

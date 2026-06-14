@@ -25,7 +25,7 @@ export const createTeam = createServerFn({ method: "POST" })
     z.object({ name: z.string().trim().min(2).max(80) }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { userId } = context;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Crea team

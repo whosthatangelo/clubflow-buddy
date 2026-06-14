@@ -7,10 +7,11 @@ import {
   deleteInvite,
   removeMember,
   changeMemberRole,
+  createTeam,
 } from "@/lib/team.functions";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { toast } from "sonner";
-import { Copy, Trash2, UserPlus, ShieldCheck, Shield } from "lucide-react";
+import { Building2, Copy, Plus, Trash2, UserPlus, ShieldCheck, Shield } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/settings/team")({
   component: TeamSettings,
@@ -33,19 +34,22 @@ interface Invite {
 }
 
 function TeamSettings() {
-  const { teamId, isAdmin, user, status } = useCurrentTeam();
+  const { teamId, teamName, teams, selectTeam, isAdmin, user, status } = useCurrentTeam();
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"staff" | "admin">("staff");
   const [submitting, setSubmitting] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [creatingTeam, setCreatingTeam] = useState(false);
 
   const listFn = useServerFn(listTeamData);
   const createInviteFn = useServerFn(createInvite);
   const deleteInviteFn = useServerFn(deleteInvite);
   const removeMemberFn = useServerFn(removeMember);
   const changeRoleFn = useServerFn(changeMemberRole);
+  const createTeamFn = useServerFn(createTeam);
 
   const load = useCallback(async () => {
     if (!teamId) return;
@@ -137,8 +141,48 @@ function TeamSettings() {
     }
   };
 
+  const addTeam = async () => {
+    if (newTeamName.trim().length < 2) return toast.error("Inserisci un nome valido");
+    setCreatingTeam(true);
+    try {
+      const result = await createTeamFn({ data: { name: newTeamName.trim() } });
+      setNewTeamName("");
+      selectTeam(result.teamId);
+      toast.success("Nuovo team creato");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Errore");
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
   return (
     <div className="space-y-5 pt-2">
+      <section className="rounded-2xl bg-card border border-border p-4 space-y-3">
+        <h3 className="font-bold flex items-center gap-2"><Building2 className="w-4 h-4" /> I tuoi team</h3>
+        <div className="space-y-2">
+          {teams.map((team) => (
+            <button key={team.id} type="button" onClick={() => selectTeam(team.id)}
+              className={`w-full min-h-12 rounded-xl border px-3 text-left flex items-center justify-between gap-3 ${team.id === teamId ? "border-primary bg-primary/10" : "border-border bg-secondary"}`}>
+              <span className="min-w-0">
+                <span className="block truncate font-bold">{team.name}</span>
+                <span className="block text-xs text-muted-foreground">{team.role === "admin" ? "Admin" : "Staff"}</span>
+              </span>
+              {team.id === teamId && <span className="text-xs font-bold text-primary">Attivo</span>}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 pt-1">
+          <input value={newTeamName} onChange={(event) => setNewTeamName(event.target.value)} placeholder="Nuovo team o città"
+            className="min-w-0 flex-1 h-12 px-4 rounded-xl bg-input border border-border" />
+          <button type="button" onClick={addTeam} disabled={creatingTeam}
+            aria-label="Crea team" className="h-12 w-12 shrink-0 grid place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-60">
+            <Plus className="w-5 h-5" />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground">Stai gestendo {teamName}. Il ruolo e le impostazioni sono separati per ogni team.</p>
+      </section>
+
       {/* Nuovo invito */}
       <section className="rounded-2xl bg-card border border-border p-4 space-y-3">
         <h3 className="font-bold flex items-center gap-2">

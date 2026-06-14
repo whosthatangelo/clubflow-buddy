@@ -20,7 +20,7 @@ interface EventRow {
 interface Format { id: string; name: string; }
 
 function EventsPage() {
-  const { isAdmin, teamId, teamName, status, user } = useCurrentTeam();
+  const { isAdmin, teamId, status, user } = useCurrentTeam();
   const navigate = useNavigate();
   const [events, setEvents] = useState<EventRow[]>([]);
   const [formats, setFormats] = useState<Format[]>([]);

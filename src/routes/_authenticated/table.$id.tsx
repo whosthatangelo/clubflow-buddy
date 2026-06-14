@@ -120,10 +120,10 @@ function TableDetail() {
       event_id: table.event_id,
       kind: "help_needed",
       table_id: id,
-      message: `Serve aiuto al tavolo ${table.ref_name}`,
+      message: `Supporto richiesto al tavolo ${table.ref_name}`,
     });
     if (error) return toast.error(error.message);
-    toast.success("Alert inviato allo staff");
+    toast.success("Richiesta inviata al team");
   };
 
   const sendRequest = async (request: string) => {
@@ -294,7 +294,7 @@ function TableDetail() {
 
         <button type="button" onClick={callHelp}
           className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2">
-          <HandMetal className="w-5 h-5" /> Chiedi aiuto allo staff
+          <HandMetal className="w-5 h-5" /> Segnala problema al team
         </button>
       </main>
 

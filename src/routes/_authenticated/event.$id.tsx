@@ -97,6 +97,13 @@ function EventDetailPage() {
         people_count: t.people_count, zone_id: t.zone_id, status: "arriving",
       })));
     }
+    const { data: assigned } = await supabase.from("event_members").select("user_id").eq("event_id", ev.id);
+    if (assigned && assigned.length > 0) {
+      const { error: staffError } = await supabase.from("event_members").insert(
+        assigned.map((member) => ({ team_id: teamId, event_id: newEv.id, user_id: member.user_id })),
+      );
+      if (staffError) return toast.error(`Evento creato, ma staff non copiato: ${staffError.message}`);
+    }
     toast.success("Evento clonato");
     navigate({ to: "/event/$id", params: { id: newEv.id } });
   };

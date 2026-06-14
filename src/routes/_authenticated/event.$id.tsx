@@ -3,14 +3,14 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
-import { ArrowLeft, Trash2, CheckCircle2, Archive, Copy, Plus, Play, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, Trash2, CheckCircle2, Archive, Copy, Plus, Play, Settings as SettingsIcon, Users } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/event/$id")({
   component: EventDetailPage,
 });
 
-type Tab = "details" | "zones" | "bottles" | "tables";
+type Tab = "details" | "staff" | "zones" | "bottles" | "tables";
 
 interface EventRow {
   id: string; name: string; date: string; headliner: string | null;
@@ -97,6 +97,13 @@ function EventDetailPage() {
         people_count: t.people_count, zone_id: t.zone_id, status: "arriving",
       })));
     }
+    const { data: assigned } = await supabase.from("event_members").select("user_id").eq("event_id", ev.id);
+    if (assigned && assigned.length > 0) {
+      const { error: staffError } = await supabase.from("event_members").insert(
+        assigned.map((member) => ({ team_id: teamId, event_id: newEv.id, user_id: member.user_id })),
+      );
+      if (staffError) return toast.error(`Evento creato, ma staff non copiato: ${staffError.message}`);
+    }
     toast.success("Evento clonato");
     navigate({ to: "/event/$id", params: { id: newEv.id } });
   };
@@ -134,6 +141,7 @@ function EventDetailPage() {
         <div className="mt-3 flex gap-2 overflow-x-auto -mx-1 px-1">
           {([
             ["details", "Dettagli", SettingsIcon],
+            ["staff", "Staff", Users],
             ["zones", "Zone", null],
             ["bottles", "Bottiglie", null],
             ["tables", "Tavoli", null],
@@ -151,10 +159,94 @@ function EventDetailPage() {
           <DetailsTab ev={ev} setEv={setEv} teamId={teamId} isAdmin={isAdmin}
             onSave={save} onActivate={activate} onArchive={archive} onDelete={del} onClone={clone} />
         )}
+        {tab === "staff" && <EventStaffTab teamId={teamId} eventId={ev.id} />}
         {tab === "zones" && <ZonesTab teamId={teamId} />}
         {tab === "bottles" && <BottlesTab teamId={teamId} eventId={ev.id} />}
         {tab === "tables" && <TablesTab teamId={teamId} eventId={ev.id} />}
       </main>
+    </div>
+  );
+}
+
+/* ============ EVENT STAFF ============ */
+interface StaffMember {
+  userId: string;
+  name: string;
+  email: string | null;
+  role: "admin" | "staff";
+}
+
+function EventStaffTab({ teamId, eventId }: { teamId: string; eventId: string }) {
+  const [members, setMembers] = useState<StaffMember[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [{ data: memberships }, { data: assignments }] = await Promise.all([
+      supabase.from("team_members").select("user_id,role").eq("team_id", teamId).eq("status", "active"),
+      supabase.from("event_members").select("user_id").eq("event_id", eventId),
+    ]);
+    const userIds = (memberships ?? []).map((membership) => membership.user_id);
+    const { data: profiles } = userIds.length > 0
+      ? await supabase.from("profiles").select("id,display_name,email").in("id", userIds)
+      : { data: [] };
+    const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+    setMembers((memberships ?? []).map((membership) => {
+      const profile = profileById.get(membership.user_id);
+      return {
+        userId: membership.user_id,
+        name: profile?.display_name ?? profile?.email ?? "Operatore",
+        email: profile?.email ?? null,
+        role: membership.role,
+      };
+    }));
+    setSelected(new Set((assignments ?? []).map((assignment) => assignment.user_id)));
+    setLoading(false);
+  }, [teamId, eventId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = async (member: StaffMember) => {
+    const isAssigned = selected.has(member.userId);
+    if (isAssigned && member.role === "admin") return;
+    const { error } = isAssigned
+      ? await supabase.from("event_members").delete().eq("event_id", eventId).eq("user_id", member.userId)
+      : await supabase.from("event_members").insert({ event_id: eventId, team_id: teamId, user_id: member.userId });
+    if (error) return toast.error(error.message);
+    setSelected((current) => {
+      const next = new Set(current);
+      if (isAssigned) next.delete(member.userId); else next.add(member.userId);
+      return next;
+    });
+  };
+
+  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">Caricamento staff…</p>;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-black">Staff della serata</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Seleziona chi partecipa. Gli admin mantengono sempre accesso all’evento.</p>
+      </div>
+      <div className="space-y-2">
+        {members.map((member) => {
+          const assigned = selected.has(member.userId);
+          return (
+            <button key={member.userId} type="button" onClick={() => toggle(member)}
+              className={`w-full rounded-xl border p-3 flex items-center gap-3 text-left ${assigned ? "border-primary bg-primary/10" : "border-border bg-card"}`}>
+              <span className={`h-6 w-6 rounded-lg border grid place-items-center ${assigned ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                {assigned && <CheckCircle2 className="w-4 h-4" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-bold">{member.name}</span>
+                <span className="block truncate text-xs text-muted-foreground">{member.email ?? "Nessuna email"} · {member.role === "admin" ? "Admin" : "Staff"}</span>
+              </span>
+              {member.role === "admin" && <span className="text-[10px] font-bold uppercase text-primary">Sempre</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

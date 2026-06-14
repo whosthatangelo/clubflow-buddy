@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { BottomNav } from "@/components/BottomNav";
+import { TeamSwitcher } from "@/components/TeamSwitcher";
 import type { SelectedBottle } from "@/components/CheckinSheet";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -66,7 +67,10 @@ function AnalyticsPage() {
   return (
     <div className="min-h-screen pb-28">
       <header className="sticky top-0 z-20 backdrop-blur bg-background/85 border-b border-border px-4 py-3">
-        <h1 className="text-xl font-black">Analytics</h1>
+        <div className="flex items-baseline justify-between gap-3">
+          <h1 className="text-xl font-black">Analytics</h1>
+          <div className="min-w-0 max-w-48 text-sm font-bold"><TeamSwitcher /></div>
+        </div>
         <div className="mt-3 flex gap-2 overflow-x-auto">
           {(["overview", "events", "formats", "headliners"] as Tab[]).map((t) => (
             <button key={t} type="button" onClick={() => setTab(t)}

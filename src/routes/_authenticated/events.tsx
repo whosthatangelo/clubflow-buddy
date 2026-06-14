@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
 import { BottomNav } from "@/components/BottomNav";
+import { TeamSwitcher } from "@/components/TeamSwitcher";
 import { Plus, Calendar, Star, MapPin, CheckCircle2, Copy, Settings, LogOut, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,7 +20,7 @@ interface EventRow {
 interface Format { id: string; name: string; }
 
 function EventsPage() {
-  const { isAdmin, teamId, teamName, status, user } = useCurrentTeam();
+  const { isAdmin, teamId, status, user } = useCurrentTeam();
   const navigate = useNavigate();
   const [events, setEvents] = useState<EventRow[]>([]);
   const [formats, setFormats] = useState<Format[]>([]);
@@ -77,6 +78,13 @@ function EventsPage() {
       })));
       if (tableError) return toast.error(`Evento creato, ma tavoli non copiati: ${tableError.message}`);
     }
+    const { data: assigned } = await supabase.from("event_members").select("user_id").eq("event_id", ev.id);
+    if (assigned && assigned.length > 0) {
+      const { error: staffError } = await supabase.from("event_members").insert(
+        assigned.map((member) => ({ team_id: teamId, event_id: newEv.id, user_id: member.user_id })),
+      );
+      if (staffError) return toast.error(`Evento creato, ma staff non copiato: ${staffError.message}`);
+    }
     toast.success("Clonato"); navigate({ to: "/event/$id", params: { id: newEv.id } });
   };
 
@@ -93,7 +101,7 @@ function EventsPage() {
     <div className="min-h-screen pb-28">
       <header className="sticky top-0 z-20 backdrop-blur bg-background/85 border-b border-border px-4 py-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="text-xl font-black truncate">{teamName ?? "TableFlow"}</h1>
+          <h1 className="text-xl font-black truncate"><TeamSwitcher /></h1>
           <p className="text-xs text-muted-foreground -mt-0.5">{isAdmin ? "Admin" : "Staff"}</p>
         </div>
         <div className="relative shrink-0">
@@ -278,6 +286,13 @@ function NewEventSheet({
     }).select("id").maybeSingle();
     setSubmitting(false);
     if (error || !data) return toast.error(error?.message ?? "Errore");
+    const { data: members } = await supabase.from("team_members").select("user_id").eq("team_id", teamId).eq("status", "active");
+    if (members && members.length > 0) {
+      const { error: assignmentError } = await supabase.from("event_members").insert(
+        members.map((member) => ({ team_id: teamId, event_id: data.id, user_id: member.user_id })),
+      );
+      if (assignmentError) return toast.error(`Evento creato, ma staff non assegnato: ${assignmentError.message}`);
+    }
     toast.success("Evento creato"); onCreated(data.id, activate);
   };
 

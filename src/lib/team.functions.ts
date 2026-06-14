@@ -25,18 +25,8 @@ export const createTeam = createServerFn({ method: "POST" })
     z.object({ name: z.string().trim().min(2).max(80) }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { userId } = context;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Verifica che l'utente non abbia già un team (limite v1: 1 team per utente)
-    const { data: existing } = await supabase
-      .from("team_members")
-      .select("team_id")
-      .eq("user_id", userId)
-      .limit(1);
-    if (existing && existing.length > 0) {
-      throw new Error("Hai già un team");
-    }
 
     // Crea team
     const { data: team, error: tErr } = await supabaseAdmin

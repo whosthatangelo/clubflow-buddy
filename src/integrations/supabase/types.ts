@@ -654,10 +654,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      can_access_event: {
-        Args: { _event_id: string; _user_id: string }
-        Returns: boolean
-      }
       is_team_admin: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean

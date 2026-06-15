@@ -132,14 +132,166 @@ export const acceptInvite = createServerFn({ method: "POST" })
 
 export const deleteInvite = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { inviteId: string }) =>
-    z.object({ inviteId: z.string().uuid() }).parse(input),
+  .inputValidator((input: { teamId: string; inviteId: string }) =>
+    z.object({ teamId: z.string().uuid(), inviteId: z.string().uuid() }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { error } = await supabase.from("team_invites").delete().eq("id", data.inviteId);
+    const { supabase, userId } = context;
+    await getAdminContext(supabase, userId, data.teamId);
+    const { error } = await supabase
+      .from("team_invites")
+      .delete()
+      .eq("id", data.inviteId)
+      .eq("team_id", data.teamId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+/* ============ Eventi ============ */
+
+const eventFields = z.object({
+  teamId: z.string().uuid(),
+  name: z.string().trim().min(2).max(120),
+  date: z.string().date(),
+  headliner: z.string().trim().max(120).nullable(),
+  formatId: z.string().uuid().nullable(),
+  venue: z.string().trim().max(160).nullable(),
+  notes: z.string().trim().max(2000).nullable(),
+});
+
+export const createEvent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: z.input<typeof eventFields>) => eventFields.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await getAdminContext(supabase, userId, data.teamId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: event, error } = await supabaseAdmin
+      .from("events")
+      .insert({
+        team_id: data.teamId,
+        created_by: userId,
+        name: data.name,
+        date: data.date,
+        headliner: data.headliner,
+        format_id: data.formatId,
+        venue: data.venue,
+        notes: data.notes,
+        status: "upcoming",
+      })
+      .select("id")
+      .single();
+    if (error || !event) throw new Error("Impossibile creare l’evento. Verifica il team attivo e riprova.");
+
+    const { data: members, error: membersError } = await supabaseAdmin
+      .from("team_members")
+      .select("user_id")
+      .eq("team_id", data.teamId)
+      .eq("status", "active");
+    if (membersError) {
+      await supabaseAdmin.from("events").delete().eq("id", event.id);
+      throw new Error("Evento non creato: impossibile caricare lo staff del team.");
+    }
+    if (members && members.length > 0) {
+      const { error: assignmentError } = await supabaseAdmin.from("event_members").insert(
+        members.map((member) => ({
+          team_id: data.teamId,
+          event_id: event.id,
+          user_id: member.user_id,
+        })),
+      );
+      if (assignmentError) {
+        await supabaseAdmin.from("events").delete().eq("id", event.id);
+        throw new Error("Evento non creato: impossibile assegnare lo staff.");
+      }
+    }
+    return { id: event.id };
+  });
+
+export const activateEvent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { teamId: string; eventId: string }) =>
+    z.object({ teamId: z.string().uuid(), eventId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await getAdminContext(supabase, userId, data.teamId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: target } = await supabaseAdmin
+      .from("events")
+      .select("id")
+      .eq("id", data.eventId)
+      .eq("team_id", data.teamId)
+      .maybeSingle();
+    if (!target) throw new Error("Evento non trovato nel team attivo.");
+
+    const { data: previous } = await supabaseAdmin
+      .from("events")
+      .select("id")
+      .eq("team_id", data.teamId)
+      .eq("status", "active")
+      .neq("id", data.eventId)
+      .maybeSingle();
+    if (previous) {
+      const { error } = await supabaseAdmin.from("events").update({ status: "archived" }).eq("id", previous.id);
+      if (error) throw new Error("Impossibile chiudere l’evento attivo.");
+    }
+    const { error } = await supabaseAdmin.from("events").update({ status: "active" }).eq("id", data.eventId);
+    if (error) {
+      if (previous) await supabaseAdmin.from("events").update({ status: "active" }).eq("id", previous.id);
+      throw new Error("Impossibile attivare l’evento. Riprova.");
+    }
+    return { ok: true };
+  });
+
+export const cloneEvent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { teamId: string; eventId: string }) =>
+    z.object({ teamId: z.string().uuid(), eventId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await getAdminContext(supabase, userId, data.teamId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: source } = await supabaseAdmin
+      .from("events")
+      .select("name,date,headliner,format_id,venue,notes")
+      .eq("id", data.eventId)
+      .eq("team_id", data.teamId)
+      .maybeSingle();
+    if (!source) throw new Error("Evento da clonare non trovato.");
+
+    const nextDate = new Date(source.date);
+    nextDate.setDate(nextDate.getDate() + 7);
+    const { data: cloned, error } = await supabaseAdmin.from("events").insert({
+      team_id: data.teamId,
+      created_by: userId,
+      status: "upcoming",
+      name: `${source.name} (copia)`,
+      date: nextDate.toISOString().slice(0, 10),
+      headliner: source.headliner,
+      format_id: source.format_id,
+      venue: source.venue,
+      notes: source.notes,
+    }).select("id").single();
+    if (error || !cloned) throw new Error("Impossibile clonare l’evento.");
+
+    const [{ data: bottles }, { data: tables }, { data: members }] = await Promise.all([
+      supabaseAdmin.from("bottles").select("name,price").eq("event_id", data.eventId),
+      supabaseAdmin.from("club_tables").select("ref_name,whatsapp,people_count,zone_id").eq("event_id", data.eventId),
+      supabaseAdmin.from("event_members").select("user_id").eq("event_id", data.eventId),
+    ]);
+    const writes = [];
+    if (bottles && bottles.length > 0) writes.push(supabaseAdmin.from("bottles").insert(bottles.map((bottle) => ({ ...bottle, team_id: data.teamId, event_id: cloned.id }))));
+    if (tables && tables.length > 0) writes.push(supabaseAdmin.from("club_tables").insert(tables.map((table) => ({ ...table, team_id: data.teamId, event_id: cloned.id, status: "arriving" as const }))));
+    if (members && members.length > 0) writes.push(supabaseAdmin.from("event_members").insert(members.map((member) => ({ ...member, team_id: data.teamId, event_id: cloned.id }))));
+    const results = await Promise.all(writes);
+    if (results.some((result) => result.error)) {
+      await supabaseAdmin.from("events").delete().eq("id", cloned.id);
+      throw new Error("Clone annullato: alcuni dati collegati non erano copiabili.");
+    }
+    return { id: cloned.id };
   });
 
 /* ============ Membri ============ */

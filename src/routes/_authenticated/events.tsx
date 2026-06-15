@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { activateEvent, cloneEvent as cloneEventServer, createEvent } from "@/lib/team.functions";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
 import { BottomNav } from "@/components/BottomNav";
@@ -27,6 +29,9 @@ function EventsPage() {
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const activateEventFn = useServerFn(activateEvent);
+  const cloneEventFn = useServerFn(cloneEventServer);
+  const createEventFn = useServerFn(createEvent);
 
   const load = useCallback(async () => {
     if (!teamId) return;
@@ -42,50 +47,25 @@ function EventsPage() {
 
   const setActive = async (id: string) => {
     if (!teamId) return;
-    const { error: archiveError } = await supabase
-      .from("events")
-      .update({ status: "archived" })
-      .eq("team_id", teamId)
-      .eq("status", "active");
-    if (archiveError) return toast.error(archiveError.message);
-    const { error } = await supabase.from("events").update({ status: "active" }).eq("id", id);
-    if (error) return toast.error(error.message);
-    toast.success("Evento attivato"); load();
+    try {
+      await activateEventFn({ data: { teamId, eventId: id } });
+      toast.success("Evento attivato");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossibile attivare l’evento");
+    }
   };
 
   const cloneEvent = async (ev: EventRow) => {
-    if (!teamId || !user) return;
+    if (!teamId) return;
     if (!confirm(`Clonare "${ev.name}"?`)) return;
-    const d = new Date(ev.date); d.setDate(d.getDate() + 7);
-    const { data: newEv, error } = await supabase.from("events").insert({
-      team_id: teamId, created_by: user.id, status: "upcoming",
-      name: `${ev.name} (copia)`, date: d.toISOString().slice(0, 10),
-      headliner: ev.headliner, format_id: ev.format_id, venue: ev.venue,
-    }).select("id").maybeSingle();
-    if (error || !newEv) return toast.error(error?.message ?? "Errore");
-    const [{ data: bts }, { data: tbs }] = await Promise.all([
-      supabase.from("bottles").select("name,price").eq("event_id", ev.id),
-      supabase.from("club_tables").select("ref_name,whatsapp,people_count,zone_id").eq("event_id", ev.id),
-    ]);
-    if (bts && bts.length > 0) {
-      const { error: bottleError } = await supabase.from("bottles").insert(bts.map((b) => ({ team_id: teamId, event_id: newEv.id, name: b.name, price: b.price })));
-      if (bottleError) return toast.error(`Evento creato, ma bottiglie non copiate: ${bottleError.message}`);
+    try {
+      const newEvent = await cloneEventFn({ data: { teamId, eventId: ev.id } });
+      toast.success("Evento clonato");
+      navigate({ to: "/event/$id", params: { id: newEvent.id } });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossibile clonare l’evento");
     }
-    if (tbs && tbs.length > 0) {
-      const { error: tableError } = await supabase.from("club_tables").insert(tbs.map((t) => ({
-        team_id: teamId, event_id: newEv.id, ref_name: t.ref_name, whatsapp: t.whatsapp,
-        people_count: t.people_count, zone_id: t.zone_id, status: "arriving",
-      })));
-      if (tableError) return toast.error(`Evento creato, ma tavoli non copiati: ${tableError.message}`);
-    }
-    const { data: assigned } = await supabase.from("event_members").select("user_id").eq("event_id", ev.id);
-    if (assigned && assigned.length > 0) {
-      const { error: staffError } = await supabase.from("event_members").insert(
-        assigned.map((member) => ({ team_id: teamId, event_id: newEv.id, user_id: member.user_id })),
-      );
-      if (staffError) return toast.error(`Evento creato, ma staff non copiato: ${staffError.message}`);
-    }
-    toast.success("Clonato"); navigate({ to: "/event/$id", params: { id: newEv.id } });
   };
 
   const signOut = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
@@ -191,7 +171,7 @@ function EventsPage() {
       </main>
 
       {creating && teamId && user && (
-        <NewEventSheet teamId={teamId} userId={user.id}
+        <NewEventSheet teamId={teamId} createEventFn={createEventFn}
           onClose={() => setCreating(false)}
           onCreated={async (id, activate) => {
             setCreating(false);
@@ -265,8 +245,13 @@ function EventCard({
 }
 
 function NewEventSheet({
-  teamId, userId, onClose, onCreated,
-}: { teamId: string; userId: string; onClose: () => void; onCreated: (id: string, activate: boolean) => void }) {
+  teamId, createEventFn, onClose, onCreated,
+}: {
+  teamId: string;
+  createEventFn: (options: { data: { teamId: string; name: string; date: string; headliner: string | null; formatId: string | null; venue: string | null; notes: string | null } }) => Promise<{ id: string }>;
+  onClose: () => void;
+  onCreated: (id: string, activate: boolean) => void;
+}) {
   const [name, setName] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [headliner, setHeadliner] = useState("");
@@ -278,22 +263,25 @@ function NewEventSheet({
   const submit = async (activate: boolean) => {
     if (!name.trim()) return toast.error("Nome obbligatorio");
     setSubmitting(true);
-    const { data, error } = await supabase.from("events").insert({
-      team_id: teamId, name: name.trim(), date,
-      headliner: headliner.trim() || null, format_id: formatId,
-      venue: venue.trim() || null, notes: notes.trim() || null,
-      status: "upcoming", created_by: userId,
-    }).select("id").maybeSingle();
-    setSubmitting(false);
-    if (error || !data) return toast.error(error?.message ?? "Errore");
-    const { data: members } = await supabase.from("team_members").select("user_id").eq("team_id", teamId).eq("status", "active");
-    if (members && members.length > 0) {
-      const { error: assignmentError } = await supabase.from("event_members").insert(
-        members.map((member) => ({ team_id: teamId, event_id: data.id, user_id: member.user_id })),
-      );
-      if (assignmentError) return toast.error(`Evento creato, ma staff non assegnato: ${assignmentError.message}`);
+    try {
+      const data = await createEventFn({
+        data: {
+          teamId,
+          name: name.trim(),
+          date,
+          headliner: headliner.trim() || null,
+          formatId,
+          venue: venue.trim() || null,
+          notes: notes.trim() || null,
+        },
+      });
+      toast.success("Evento creato");
+      onCreated(data.id, activate);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossibile creare l’evento");
+    } finally {
+      setSubmitting(false);
     }
-    toast.success("Evento creato"); onCreated(data.id, activate);
   };
 
   return (

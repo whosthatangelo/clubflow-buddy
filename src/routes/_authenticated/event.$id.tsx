@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { activateEvent, cloneEvent as cloneEventServer } from "@/lib/team.functions";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
 import { ArrowLeft, Trash2, CheckCircle2, Archive, Copy, Plus, Play, Settings as SettingsIcon, Users } from "lucide-react";
@@ -31,6 +33,8 @@ function EventDetailPage() {
   const [ev, setEv] = useState<EventRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("details");
+  const activateEventFn = useServerFn(activateEvent);
+  const cloneEventFn = useServerFn(cloneEventServer);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("events").select("*").eq("id", id).maybeSingle();
@@ -52,10 +56,12 @@ function EventDetailPage() {
 
   const activate = async () => {
     if (!ev || !teamId) return;
-    await supabase.from("events").update({ status: "archived" }).eq("team_id", teamId).eq("status", "active");
-    const { error } = await supabase.from("events").update({ status: "active" }).eq("id", ev.id);
-    if (error) return toast.error(error.message);
-    navigate({ to: "/board" });
+    try {
+      await activateEventFn({ data: { teamId, eventId: ev.id } });
+      navigate({ to: "/board" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossibile attivare l’evento");
+    }
   };
 
   const archive = async () => {
@@ -74,38 +80,15 @@ function EventDetailPage() {
   };
 
   const clone = async () => {
-    if (!ev || !teamId || !user) return;
+    if (!ev || !teamId) return;
     if (!confirm(`Clonare "${ev.name}"? Verranno copiati bottiglie e tavoli (non gli ordini).`)) return;
-    const newDate = new Date(ev.date); newDate.setDate(newDate.getDate() + 7);
-    const { data: newEv, error } = await supabase.from("events").insert({
-      team_id: teamId, created_by: user.id, status: "upcoming",
-      name: `${ev.name} (copia)`, date: newDate.toISOString().slice(0, 10),
-      headliner: ev.headliner, format_id: ev.format_id, venue: ev.venue, notes: ev.notes,
-    }).select("id").maybeSingle();
-    if (error || !newEv) return toast.error(error?.message ?? "Errore");
-
-    // Copy bottles
-    const { data: bts } = await supabase.from("bottles").select("name,price").eq("event_id", ev.id);
-    if (bts && bts.length > 0) {
-      await supabase.from("bottles").insert(bts.map((b) => ({ team_id: teamId, event_id: newEv.id, name: b.name, price: b.price })));
+    try {
+      const newEvent = await cloneEventFn({ data: { teamId, eventId: ev.id } });
+      toast.success("Evento clonato");
+      navigate({ to: "/event/$id", params: { id: newEvent.id } });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossibile clonare l’evento");
     }
-    // Copy tables
-    const { data: tbs } = await supabase.from("club_tables").select("ref_name,whatsapp,people_count,zone_id").eq("event_id", ev.id);
-    if (tbs && tbs.length > 0) {
-      await supabase.from("club_tables").insert(tbs.map((t) => ({
-        team_id: teamId, event_id: newEv.id, ref_name: t.ref_name, whatsapp: t.whatsapp,
-        people_count: t.people_count, zone_id: t.zone_id, status: "arriving",
-      })));
-    }
-    const { data: assigned } = await supabase.from("event_members").select("user_id").eq("event_id", ev.id);
-    if (assigned && assigned.length > 0) {
-      const { error: staffError } = await supabase.from("event_members").insert(
-        assigned.map((member) => ({ team_id: teamId, event_id: newEv.id, user_id: member.user_id })),
-      );
-      if (staffError) return toast.error(`Evento creato, ma staff non copiato: ${staffError.message}`);
-    }
-    toast.success("Evento clonato");
-    navigate({ to: "/event/$id", params: { id: newEv.id } });
   };
 
   if (loading || teamStatus === "loading") return <p className="p-6 text-muted-foreground">Caricamento…</p>;

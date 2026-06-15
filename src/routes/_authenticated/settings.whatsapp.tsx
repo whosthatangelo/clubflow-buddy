@@ -122,7 +122,7 @@ function WhatsAppSettings() {
 
   const webhookUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/api/public/webhook/whatsapp`
+      ? "https://clubflow-buddy.lovable.app/api/public/webhook/whatsapp"
       : "";
 
   if (loading) return <p className="p-6 text-muted-foreground">Caricamento…</p>;
@@ -132,7 +132,7 @@ function WhatsAppSettings() {
       <section className="rounded-2xl bg-card border border-border p-4 space-y-3">
         <h3 className="font-bold">Credenziali Twilio</h3>
         <p className="text-xs text-muted-foreground">
-          Trovi questi valori nella Console Twilio in alto a destra.
+          Usa un numero WhatsApp Business abilitato in Twilio. Le credenziali restano accessibili solo agli admin del team.
         </p>
 
         <label className="block">
@@ -199,11 +199,10 @@ function WhatsAppSettings() {
       <section className="rounded-2xl bg-card border border-border p-4 space-y-3">
         <h3 className="font-bold">Webhook</h3>
         <p className="text-xs text-muted-foreground">
-          Configura questi valori in Twilio Console → Phone Numbers → WhatsApp settings →
-          Incoming message webhook (POST).
+          In Twilio configura “When a message comes in” con questo URL, metodo POST. Twilio firmerà automaticamente ogni richiesta: non aggiungere header manuali.
         </p>
 
-        <label className="block">
+        <label className="block sr-only">
           <span className="text-xs uppercase tracking-wider text-muted-foreground font-bold">
             URL webhook
           </span>
@@ -253,8 +252,7 @@ function WhatsAppSettings() {
         <div className="flex items-start gap-2 text-xs text-warning bg-warning/10 rounded-xl p-3">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
-            Il messaggio in arrivo viene smistato al team in base al numero Twilio configurato
-            (campo <code className="font-mono">To</code>).
+            Salva prima le credenziali, premi “Testa”, poi invia un messaggio reale al numero WhatsApp. Il messaggio apparirà negli avvisi dell’evento attivo e verrà associato al tavolo tramite il numero del cliente.
           </span>
         </div>
       </section>

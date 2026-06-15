@@ -63,7 +63,11 @@ export const Route = createFileRoute("/api/public/webhook/whatsapp")({
             const expected = btoa(String.fromCharCode(...new Uint8Array(digest)));
             authorized = expected === twilioSignature;
           } else if (provided && teamSettings.webhook_secret) {
-            authorized = provided === teamSettings.webhook_secret;
+            const { timingSafeEqual } = await import("node:crypto");
+            const providedBytes = Buffer.from(provided);
+            const expectedBytes = Buffer.from(teamSettings.webhook_secret);
+            authorized = providedBytes.length === expectedBytes.length
+              && timingSafeEqual(providedBytes, expectedBytes);
           }
           if (!authorized) return new Response("Unauthorized", { status: 401 });
 

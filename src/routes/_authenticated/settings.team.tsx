@@ -132,8 +132,9 @@ function TeamSettings() {
   };
 
   const removeInv = async (id: string) => {
+    if (!teamId) return;
     try {
-      await deleteInviteFn({ data: { inviteId: id } });
+      await deleteInviteFn({ data: { teamId, inviteId: id } });
       toast.success("Invito eliminato");
       load();
     } catch (err) {

@@ -132,13 +132,114 @@ export const acceptInvite = createServerFn({ method: "POST" })
 
 export const deleteInvite = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { inviteId: string }) =>
-    z.object({ inviteId: z.string().uuid() }).parse(input),
+  .inputValidator((input: { teamId: string; inviteId: string }) =>
+    z.object({ teamId: z.string().uuid(), inviteId: z.string().uuid() }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { error } = await supabase.from("team_invites").delete().eq("id", data.inviteId);
+    const { supabase, userId } = context;
+    await getAdminContext(supabase, userId, data.teamId);
+    const { error } = await supabase
+      .from("team_invites")
+      .delete()
+      .eq("id", data.inviteId)
+      .eq("team_id", data.teamId);
     if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/* ============ Eventi ============ */
+
+const eventFields = z.object({
+  teamId: z.string().uuid(),
+  name: z.string().trim().min(2).max(120),
+  date: z.string().date(),
+  headliner: z.string().trim().max(120).nullable(),
+  formatId: z.string().uuid().nullable(),
+  venue: z.string().trim().max(160).nullable(),
+  notes: z.string().trim().max(2000).nullable(),
+});
+
+export const createEvent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: z.input<typeof eventFields>) => eventFields.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await getAdminContext(supabase, userId, data.teamId);
+
+    const { data: event, error } = await supabase
+      .from("events")
+      .insert({
+        team_id: data.teamId,
+        created_by: userId,
+        name: data.name,
+        date: data.date,
+        headliner: data.headliner,
+        format_id: data.formatId,
+        venue: data.venue,
+        notes: data.notes,
+        status: "upcoming",
+      })
+      .select("id")
+      .single();
+    if (error || !event) throw new Error("Impossibile creare l’evento. Verifica il team attivo e riprova.");
+
+    const { data: members, error: membersError } = await supabase
+      .from("team_members")
+      .select("user_id")
+      .eq("team_id", data.teamId)
+      .eq("status", "active");
+    if (membersError) {
+      await supabase.from("events").delete().eq("id", event.id);
+      throw new Error("Evento non creato: impossibile caricare lo staff del team.");
+    }
+    if (members && members.length > 0) {
+      const { error: assignmentError } = await supabase.from("event_members").insert(
+        members.map((member) => ({
+          team_id: data.teamId,
+          event_id: event.id,
+          user_id: member.user_id,
+        })),
+      );
+      if (assignmentError) {
+        await supabase.from("events").delete().eq("id", event.id);
+        throw new Error("Evento non creato: impossibile assegnare lo staff.");
+      }
+    }
+    return { id: event.id };
+  });
+
+export const activateEvent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { teamId: string; eventId: string }) =>
+    z.object({ teamId: z.string().uuid(), eventId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await getAdminContext(supabase, userId, data.teamId);
+    const { data: target } = await supabase
+      .from("events")
+      .select("id")
+      .eq("id", data.eventId)
+      .eq("team_id", data.teamId)
+      .maybeSingle();
+    if (!target) throw new Error("Evento non trovato nel team attivo.");
+
+    const { data: previous } = await supabase
+      .from("events")
+      .select("id")
+      .eq("team_id", data.teamId)
+      .eq("status", "active")
+      .neq("id", data.eventId)
+      .maybeSingle();
+    if (previous) {
+      const { error } = await supabase.from("events").update({ status: "archived" }).eq("id", previous.id);
+      if (error) throw new Error("Impossibile chiudere l’evento attivo.");
+    }
+    const { error } = await supabase.from("events").update({ status: "active" }).eq("id", data.eventId);
+    if (error) {
+      if (previous) await supabase.from("events").update({ status: "active" }).eq("id", previous.id);
+      throw new Error("Impossibile attivare l’evento. Riprova.");
+    }
     return { ok: true };
   });
 

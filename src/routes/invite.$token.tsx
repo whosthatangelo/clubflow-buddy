@@ -1,12 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useServerFn } from "@tanstack/react-start";
 import { acceptInvite } from "@/lib/team.functions";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/invite/$token")({
-  ssr: false,
   component: InvitePage,
 });
 
@@ -23,12 +21,10 @@ function InvitePage() {
   const [mode, setMode] = useState<"signin" | "signup">("signup");
   const [confirmationSent, setConfirmationSent] = useState(false);
 
-  const acceptFn = useServerFn(acceptInvite);
-
   const tryAccept = async () => {
     setPhase("joining");
     try {
-      await acceptFn({ data: { token } });
+      await acceptInvite({ token });
       setPhase("done");
       toast.success("Sei nel team!");
       setTimeout(() => navigate({ to: "/board" }), 600);

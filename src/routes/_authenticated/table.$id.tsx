@@ -56,9 +56,11 @@ function TableDetail() {
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
+  const [sendingAlert, setSendingAlert] = useState(false);
 
   const load = useCallback(async () => {
-    const { data: t } = await supabase.from("club_tables").select("*").eq("id", id).maybeSingle();
+    const { data: t, error: tErr } = await supabase.from("club_tables").select("*").eq("id", id).maybeSingle();
+    if (tErr) { toast.error("Impossibile caricare il tavolo."); setLoading(false); return; }
     if (!t) { setLoading(false); return; }
     setTable(t as ClubTable);
     setNotesDraft((t as ClubTable).notes ?? "");
@@ -99,41 +101,57 @@ function TableDetail() {
     const ns = nextStatus(table.status);
     if (!ns) return;
     const now = new Date().toISOString();
-    const { error } = await supabase.from("club_tables").update({
+    // Optimistic-concurrency guard: only advance if the row is still in the
+    // status we based `ns` on, so two operators can't double-advance / clobber.
+    const { data: updated, error } = await supabase.from("club_tables").update({
       status: ns,
       assigned_to: user?.id ?? null,
       ...(ns === "fish_delivered" ? { fish_delivered_at: now } : {}),
       ...(ns === "bottle_waiting" ? { bottle_waiting_at: now } : {}),
       ...(ns === "bottle_arrived" ? { bottle_arrived_at: now } : {}),
       ...(ns === "closed" ? { closed_at: now } : {}),
-    }).eq("id", id);
-    if (error) toast.error(error.message);
+    }).eq("id", id).eq("status", table.status).select("id");
+    if (error) return toast.error(error.message);
+    if (!updated || updated.length === 0) {
+      return toast.error("Il tavolo è stato aggiornato da un altro operatore.");
+    }
     if (ns === "bottle_arrived" || ns === "closed") {
-      await supabase.from("alerts").update({ resolved_at: now }).eq("table_id", id).is("resolved_at", null);
+      const { error: resolveError } = await supabase.from("alerts").update({ resolved_at: now }).eq("table_id", id).is("resolved_at", null);
+      if (resolveError) toast.error("Stato aggiornato, ma gli avvisi non sono stati chiusi.");
     }
   };
 
   const callHelp = async () => {
-    if (!teamId || !table) return;
-    const { error } = await supabase.from("alerts").insert({
-      team_id: teamId,
-      event_id: table.event_id,
-      kind: "help_needed",
-      table_id: id,
-      message: `Supporto richiesto al tavolo ${table.ref_name}`,
-    });
-    if (error) return toast.error(error.message);
-    toast.success("Richiesta inviata al team");
+    if (!teamId || !table || sendingAlert) return;
+    setSendingAlert(true);
+    try {
+      const { error } = await supabase.from("alerts").insert({
+        team_id: teamId,
+        event_id: table.event_id,
+        kind: "help_needed",
+        table_id: id,
+        message: `Supporto richiesto al tavolo ${table.ref_name}`,
+      });
+      if (error) return toast.error(error.message);
+      toast.success("Richiesta inviata al team");
+    } finally {
+      setSendingAlert(false);
+    }
   };
 
   const sendRequest = async (request: string) => {
-    if (!teamId || !table) return;
-    const { error } = await supabase.from("alerts").insert({
-      team_id: teamId, event_id: table.event_id, kind: "help_needed", table_id: id,
-      message: `${request} · ${table.ref_name}`,
-    });
-    if (error) return toast.error(error.message);
-    toast.success(`${request}: richiesta inviata`);
+    if (!teamId || !table || sendingAlert) return;
+    setSendingAlert(true);
+    try {
+      const { error } = await supabase.from("alerts").insert({
+        team_id: teamId, event_id: table.event_id, kind: "help_needed", table_id: id,
+        message: `${request} · ${table.ref_name}`,
+      });
+      if (error) return toast.error(error.message);
+      toast.success(`${request}: richiesta inviata`);
+    } finally {
+      setSendingAlert(false);
+    }
   };
 
   const saveNotes = async () => {
@@ -285,15 +303,15 @@ function TableDetail() {
           <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Richieste rapide</h3>
           <div className="grid grid-cols-2 gap-2">
             {["Manca ghiaccio", "Manca tonica", "Serve cameriere", "Altra assistenza"].map((request) => (
-              <button key={request} type="button" onClick={() => sendRequest(request)} className="min-h-11 rounded-xl bg-secondary px-3 text-sm font-bold">
+              <button key={request} type="button" onClick={() => sendRequest(request)} disabled={sendingAlert} className="min-h-11 rounded-xl bg-secondary px-3 text-sm font-bold disabled:opacity-60">
                 {request}
               </button>
             ))}
           </div>
         </div>
 
-        <button type="button" onClick={callHelp}
-          className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2">
+        <button type="button" onClick={callHelp} disabled={sendingAlert}
+          className="w-full h-12 rounded-2xl bg-warning/15 border-2 border-warning text-warning font-bold inline-flex items-center justify-center gap-2 disabled:opacity-60">
           <HandMetal className="w-5 h-5" /> Segnala problema al team
         </button>
       </main>

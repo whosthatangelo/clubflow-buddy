@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import {
   getTwilioSettings,
   saveTwilioSettings,
@@ -19,24 +18,23 @@ function WhatsAppSettings() {
   const { teamId, isAdmin, status } = useCurrentTeam();
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
+  const [hasToken, setHasToken] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
-  const getFn = useServerFn(getTwilioSettings);
-  const saveFn = useServerFn(saveTwilioSettings);
-  const testFn = useServerFn(testTwilioConnection);
-  const regenFn = useServerFn(regenerateWebhookSecret);
-
   const load = useCallback(async () => {
     if (!teamId) return;
     setLoading(true);
     try {
-      const s = await getFn({ data: { teamId } });
+      const s = await getTwilioSettings({ teamId });
       setAccountSid(s.twilio_account_sid ?? "");
-      setAuthToken(s.twilio_auth_token ?? "");
+      // The auth token is write-only: never loaded back into the form. We only
+      // know whether one is configured.
+      setAuthToken("");
+      setHasToken(s.has_auth_token);
       setWhatsappNumber(s.twilio_whatsapp_number ?? "");
       setWebhookSecret(s.webhook_secret ?? "");
     } catch (err) {
@@ -44,13 +42,14 @@ function WhatsAppSettings() {
     } finally {
       setLoading(false);
     }
-  }, [teamId, getFn]);
+  }, [teamId]);
 
   useEffect(() => {
     if (status === "ready" && isAdmin) load();
   }, [status, isAdmin, load]);
 
   if (status === "loading") return <p className="p-6 text-muted-foreground">Caricamento…</p>;
+  if (status === "error") return <p className="p-6 text-destructive">Errore nel caricamento del team. Ricarica la pagina.</p>;
   if (!isAdmin) {
     return (
       <div className="text-center py-12">
@@ -61,19 +60,25 @@ function WhatsAppSettings() {
 
   const save = async () => {
     if (!teamId) return;
-    if (!accountSid.trim() || !authToken.trim() || !whatsappNumber.trim()) {
+    if (!accountSid.trim() || !whatsappNumber.trim()) {
       return toast.error("Compila tutti i campi");
+    }
+    // The token is only required the first time (when none is stored yet).
+    if (!hasToken && !authToken.trim()) {
+      return toast.error("Inserisci l’Auth Token");
     }
     setSaving(true);
     try {
-      await saveFn({
-        data: {
-          teamId,
-          accountSid: accountSid.trim(),
-          authToken: authToken.trim(),
-          whatsappNumber: whatsappNumber.trim(),
-        },
+      await saveTwilioSettings({
+        teamId,
+        accountSid: accountSid.trim(),
+        authToken: authToken.trim() || undefined,
+        whatsappNumber: whatsappNumber.trim(),
       });
+      if (authToken.trim()) {
+        setHasToken(true);
+        setAuthToken("");
+      }
       toast.success("Salvato");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Errore");
@@ -86,7 +91,7 @@ function WhatsAppSettings() {
     if (!teamId) return;
     setTesting(true);
     try {
-      const res = await testFn({ data: { teamId } });
+      const res = await testTwilioConnection({ teamId });
       if (res.ok) {
         toast.success(`Connesso ${res.friendlyName ? `· ${res.friendlyName}` : ""} (${res.status ?? "ok"})`);
       } else {
@@ -103,7 +108,7 @@ function WhatsAppSettings() {
     if (!teamId) return;
     if (!confirm("Rigenerare il secret invaliderà il webhook attuale. Continuare?")) return;
     try {
-      const res = await regenFn({ data: { teamId } });
+      const res = await regenerateWebhookSecret({ teamId });
       setWebhookSecret(res.webhook_secret);
       toast.success("Nuovo secret generato");
     } catch (err) {
@@ -120,10 +125,7 @@ function WhatsAppSettings() {
     }
   };
 
-  const webhookUrl =
-    typeof window !== "undefined"
-      ? "https://clubflow-buddy.lovable.app/api/public/webhook/whatsapp"
-      : "";
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   if (loading) return <p className="p-6 text-muted-foreground">Caricamento…</p>;
 
@@ -149,11 +151,12 @@ function WhatsAppSettings() {
 
         <label className="block">
           <span className="text-xs uppercase tracking-wider text-muted-foreground font-bold">
-            Auth Token
+            Auth Token {hasToken && <span className="text-success normal-case">· salvato</span>}
           </span>
           <input
             type="password"
-            placeholder="•••••"
+            autoComplete="off"
+            placeholder={hasToken ? "•••••• (lascia vuoto per non cambiare)" : "Auth Token Twilio"}
             value={authToken}
             onChange={(e) => setAuthToken(e.target.value)}
             className="mt-1 w-full h-12 px-4 rounded-xl bg-input border border-border font-mono text-sm"

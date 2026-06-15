@@ -12,6 +12,13 @@ export function useSession() {
       if (!mounted) return;
       setSession(data.session);
       setLoading(false);
+    }).catch((err) => {
+      // Without this, a rejected getSession() leaves `loading` stuck true and
+      // the whole app hangs on its loading state.
+      if (!mounted) return;
+      console.error("[useSession] getSession failed", err);
+      setSession(null);
+      setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);

@@ -21,7 +21,11 @@ export function FormatSelect({
   const [editName, setEditName] = useState("");
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from("formats").select("id,name").eq("team_id", teamId).order("name");
+    const { data, error } = await supabase.from("formats").select("id,name").eq("team_id", teamId).order("name");
+    if (error) {
+      toast.error("Impossibile caricare i format.");
+      return;
+    }
     setItems((data ?? []) as Format[]);
   }, [teamId]);
   useEffect(() => { load(); }, [load]);

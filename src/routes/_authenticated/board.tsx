@@ -65,12 +65,18 @@ function BoardPage() {
     if (!teamId || !eventId) { setLoading(false); return; }
     let mounted = true;
     const load = async () => {
-      const [{ data: t }, { data: z }, { data: assignments }] = await Promise.all([
+      const [{ data: t, error: tErr }, { data: z, error: zErr }, { data: assignments, error: aErr }] = await Promise.all([
         supabase.from("club_tables").select("*").eq("event_id", eventId).order("created_at"),
         supabase.from("zones").select("*").eq("team_id", teamId).order("name"),
         supabase.from("event_members").select("user_id").eq("event_id", eventId),
       ]);
       if (!mounted) return;
+      if (tErr || zErr || aErr) {
+        // Surface the failure instead of rendering an empty "no tables" board.
+        toast.error("Impossibile caricare la board. Riprova.");
+        setLoading(false);
+        return;
+      }
       setTables((t ?? []) as ClubTable[]);
       setZones((z ?? []) as Zone[]);
       const ids = (assignments ?? []).flatMap((member) => member.user_id ? [member.user_id] : []);
@@ -88,7 +94,12 @@ function BoardPage() {
         { event: "*", schema: "public", table: "club_tables", filter: `event_id=eq.${eventId}` },
         (payload) => {
           setTables((prev) => {
-            if (payload.eventType === "INSERT") return [...prev, payload.new as ClubTable];
+            if (payload.eventType === "INSERT") {
+              const row = payload.new as ClubTable;
+              // Dedup: the initial load() or a duplicate echo may already hold
+              // this row — appending blindly would render a duplicate card.
+              return prev.some((r) => r.id === row.id) ? prev : [...prev, row];
+            }
             if (payload.eventType === "DELETE") return prev.filter((r) => r.id !== (payload.old as ClubTable).id);
             if (payload.eventType === "UPDATE") return prev.map((r) => (r.id === (payload.new as ClubTable).id ? (payload.new as ClubTable) : r));
             return prev;
@@ -112,10 +123,15 @@ function BoardPage() {
       lateAlertsCreated.current.add(t.id);
       const { data: existing } = await supabase.from("alerts").select("id").eq("table_id", t.id).eq("kind", "bottle_late").is("resolved_at", null).limit(1);
       if (existing && existing.length > 0) return;
-      await supabase.from("alerts").insert({
+      const { error } = await supabase.from("alerts").insert({
         team_id: teamId, event_id: eventId, table_id: t.id, kind: "bottle_late",
         message: "Bottiglia in attesa da oltre 15 min",
       });
+      // 23505 = another device won the race and inserted the same open alert
+      // first (blocked by the partial unique index). That's expected — ignore.
+      if (error && error.code !== "23505") {
+        console.error("[board] bottle_late alert insert", error);
+      }
     });
   }, [tables, now, user, teamId, eventId]);
 
@@ -129,22 +145,32 @@ function BoardPage() {
     const ns = nextStatus(t.status);
     if (!ns) return;
     const nowIso = new Date().toISOString();
-    const { error } = await supabase.from("club_tables").update({
+    // Optimistic-concurrency guard: only advance if the row is still in the
+    // status we based `ns` on. If another operator already moved it, the match
+    // returns 0 rows and we surface that instead of clobbering their change.
+    const { data: updated, error } = await supabase.from("club_tables").update({
       status: ns,
       assigned_to: user?.id ?? null,
       ...(ns === "fish_delivered" ? { fish_delivered_at: nowIso } : {}),
       ...(ns === "bottle_waiting" ? { bottle_waiting_at: nowIso } : {}),
       ...(ns === "bottle_arrived" ? { bottle_arrived_at: nowIso } : {}),
       ...(ns === "closed" ? { closed_at: nowIso } : {}),
-    }).eq("id", t.id);
+    }).eq("id", t.id).eq("status", t.status).select("id");
     if (error) return toast.error(error.message);
+    if (!updated || updated.length === 0) {
+      return toast.error("Il tavolo è stato aggiornato da un altro operatore.");
+    }
     if (ns === "bottle_arrived" || ns === "closed") {
-      await supabase.from("alerts").update({ resolved_at: nowIso }).eq("table_id", t.id).is("resolved_at", null);
+      const { error: resolveError } = await supabase.from("alerts").update({ resolved_at: nowIso }).eq("table_id", t.id).is("resolved_at", null);
+      if (resolveError) toast.error("Stato aggiornato, ma gli avvisi non sono stati chiusi.");
     }
   };
 
   
 
+  if (teamStatus === "error") {
+    return <p className="p-6 text-destructive">Errore nel caricamento del team. Ricarica la pagina.</p>;
+  }
   if (teamStatus === "loading" || evLoading) {
     return <p className="p-6 text-muted-foreground">Caricamento…</p>;
   }

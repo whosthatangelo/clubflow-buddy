@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "./use-session";
 
-export type TeamStatus = "loading" | "no_team" | "ready";
+export type TeamStatus = "loading" | "no_team" | "ready" | "error";
 
 export interface CurrentTeam {
   status: TeamStatus;
@@ -31,17 +31,24 @@ export function useCurrentTeam(): CurrentTeam {
   const [isAdmin, setIsAdmin] = useState(false);
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [status, setStatus] = useState<TeamStatus>("loading");
+  // Monotonic request token: a slower earlier fetch must not overwrite the
+  // result of a later one (e.g. rapid team switches).
+  const reqIdRef = useRef(0);
 
   const fetchTeam = useCallback(async (uid: string) => {
+    const reqId = ++reqIdRef.current;
     const { data, error } = await supabase
       .from("team_members")
       .select("team_id, role, teams(name)")
       .eq("user_id", uid)
       .eq("status", "active")
       .order("created_at", { ascending: true });
+    if (reqId !== reqIdRef.current) return; // a newer fetch superseded this one
     if (error) {
+      // Do NOT mask a transient/RLS failure as "no team" — that would wrongly
+      // funnel an existing member into onboarding. Surface a distinct error.
       console.error("[useCurrentTeam]", error);
-      setStatus("no_team");
+      setStatus("error");
       return;
     }
     const options = (data ?? []).map((row) => ({
@@ -69,7 +76,15 @@ export function useCurrentTeam(): CurrentTeam {
   useEffect(() => {
     if (sessionLoading) return;
     if (!user) {
-      setStatus("loading");
+      // Logged out: reset to a stable, resolved state. Returning "loading"
+      // here would leave every consumer stuck on a spinner forever. Bump the
+      // request token so any in-flight fetchTeam can't overwrite this reset.
+      reqIdRef.current++;
+      setTeamId(null);
+      setTeamName(null);
+      setIsAdmin(false);
+      setTeams([]);
+      setStatus("no_team");
       return;
     }
     fetchTeam(user.id);
@@ -93,7 +108,7 @@ export function useCurrentTeam(): CurrentTeam {
   }, [user, fetchTeam]);
 
   return {
-    status: sessionLoading || (!user && status === "loading") ? "loading" : status,
+    status: sessionLoading ? "loading" : status,
     teamId,
     teamName,
     isAdmin,

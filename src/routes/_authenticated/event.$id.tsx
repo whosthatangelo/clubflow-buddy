@@ -1,8 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { activateEvent, cloneEvent as cloneEventServer } from "@/lib/team.functions";
+import { activateEvent, cloneEvent, updateEvent } from "@/lib/team.functions";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
 import { ArrowLeft, Trash2, CheckCircle2, Archive, Copy, Plus, Play, Settings as SettingsIcon, Users } from "lucide-react";
@@ -33,31 +32,44 @@ function EventDetailPage() {
   const [ev, setEv] = useState<EventRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("details");
-  const activateEventFn = useServerFn(activateEvent);
-  const cloneEventFn = useServerFn(cloneEventServer);
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from("events").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await supabase.from("events").select("*").eq("id", id).maybeSingle();
+    if (error) {
+      toast.error("Impossibile caricare l’evento.");
+      setLoading(false);
+      return;
+    }
     setEv((data as EventRow) ?? null);
     setLoading(false);
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
   const save = async () => {
-    if (!ev) return;
-    const { error } = await supabase.from("events").update({
-      name: ev.name, date: ev.date,
-      headliner: ev.headliner || null, format_id: ev.format_id || null,
-      venue: ev.venue || null, notes: ev.notes || null,
-    }).eq("id", ev.id);
-    if (error) return toast.error(error.message);
-    toast.success("Salvato");
+    if (!ev || !teamId) return;
+    try {
+      // Goes through the Zod-validated data layer (min/max lengths, date format)
+      // instead of writing raw, unvalidated values straight to the DB.
+      await updateEvent({
+        teamId,
+        eventId: ev.id,
+        name: ev.name,
+        date: ev.date,
+        headliner: ev.headliner || null,
+        formatId: ev.format_id || null,
+        venue: ev.venue || null,
+        notes: ev.notes || null,
+      });
+      toast.success("Salvato");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossibile salvare l’evento");
+    }
   };
 
   const activate = async () => {
     if (!ev || !teamId) return;
     try {
-      await activateEventFn({ data: { teamId, eventId: ev.id } });
+      await activateEvent({ teamId, eventId: ev.id });
       navigate({ to: "/board" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Impossibile attivare l’evento");
@@ -83,7 +95,7 @@ function EventDetailPage() {
     if (!ev || !teamId) return;
     if (!confirm(`Clonare "${ev.name}"? Verranno copiati bottiglie e tavoli (non gli ordini).`)) return;
     try {
-      const newEvent = await cloneEventFn({ data: { teamId, eventId: ev.id } });
+      const newEvent = await cloneEvent({ teamId, eventId: ev.id });
       toast.success("Evento clonato");
       navigate({ to: "/event/$id", params: { id: newEvent.id } });
     } catch (error) {
@@ -91,6 +103,7 @@ function EventDetailPage() {
     }
   };
 
+  if (teamStatus === "error") return <p className="p-6 text-destructive">Errore nel caricamento del team. Ricarica la pagina.</p>;
   if (loading || teamStatus === "loading") return <p className="p-6 text-muted-foreground">Caricamento…</p>;
   if (!ev || !teamId) return <p className="p-6">Evento non trovato.</p>;
   if (!isAdmin) {
@@ -162,14 +175,20 @@ interface StaffMember {
 function EventStaffTab({ teamId, eventId }: { teamId: string; eventId: string }) {
   const [members, setMembers] = useState<StaffMember[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: memberships }, { data: assignments }] = await Promise.all([
+    const [{ data: memberships, error: mErr }, { data: assignments, error: aErr }] = await Promise.all([
       supabase.from("team_members").select("user_id,role").eq("team_id", teamId).eq("status", "active"),
       supabase.from("event_members").select("user_id").eq("event_id", eventId),
     ]);
+    if (mErr || aErr) {
+      toast.error("Impossibile caricare lo staff.");
+      setLoading(false);
+      return;
+    }
     const userIds = (memberships ?? []).map((membership) => membership.user_id);
     const { data: profiles } = userIds.length > 0
       ? await supabase.from("profiles").select("id,display_name,email").in("id", userIds)
@@ -193,15 +212,29 @@ function EventStaffTab({ teamId, eventId }: { teamId: string; eventId: string })
   const toggle = async (member: StaffMember) => {
     const isAssigned = selected.has(member.userId);
     if (isAssigned && member.role === "admin") return;
-    const { error } = isAssigned
-      ? await supabase.from("event_members").delete().eq("event_id", eventId).eq("user_id", member.userId)
-      : await supabase.from("event_members").insert({ event_id: eventId, team_id: teamId, user_id: member.userId });
-    if (error) return toast.error(error.message);
-    setSelected((current) => {
-      const next = new Set(current);
-      if (isAssigned) next.delete(member.userId); else next.add(member.userId);
-      return next;
-    });
+    if (busyIds.has(member.userId)) return; // ignore taps while a toggle is in flight
+    setBusyIds((current) => new Set(current).add(member.userId));
+    try {
+      const { error } = isAssigned
+        ? await supabase.from("event_members").delete().eq("event_id", eventId).eq("user_id", member.userId)
+        : await supabase.from("event_members").insert({ event_id: eventId, team_id: teamId, user_id: member.userId });
+      // 23505 = already assigned (race / double-tap). Treat as success and
+      // converge local state to "assigned" rather than surfacing an error.
+      if (error && !(error.code === "23505" && !isAssigned)) {
+        return toast.error(error.message);
+      }
+      setSelected((current) => {
+        const next = new Set(current);
+        if (isAssigned) next.delete(member.userId); else next.add(member.userId);
+        return next;
+      });
+    } finally {
+      setBusyIds((current) => {
+        const next = new Set(current);
+        next.delete(member.userId);
+        return next;
+      });
+    }
   };
 
   if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">Caricamento staff…</p>;
@@ -215,9 +248,10 @@ function EventStaffTab({ teamId, eventId }: { teamId: string; eventId: string })
       <div className="space-y-2">
         {members.map((member) => {
           const assigned = selected.has(member.userId);
+          const busy = busyIds.has(member.userId);
           return (
-            <button key={member.userId} type="button" onClick={() => toggle(member)}
-              className={`w-full rounded-xl border p-3 flex items-center gap-3 text-left ${assigned ? "border-primary bg-primary/10" : "border-border bg-card"}`}>
+            <button key={member.userId} type="button" onClick={() => toggle(member)} disabled={busy}
+              className={`w-full rounded-xl border p-3 flex items-center gap-3 text-left disabled:opacity-60 ${assigned ? "border-primary bg-primary/10" : "border-border bg-card"}`}>
               <span className={`h-6 w-6 rounded-lg border grid place-items-center ${assigned ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
                 {assigned && <CheckCircle2 className="w-4 h-4" />}
               </span>
@@ -300,7 +334,8 @@ function ZonesTab({ teamId }: { teamId: string }) {
   const [items, setItems] = useState<Zone[]>([]);
   const [name, setName] = useState(""); const [minPp, setMinPp] = useState("");
   const load = useCallback(async () => {
-    const { data } = await supabase.from("zones").select("*").eq("team_id", teamId).order("name");
+    const { data, error } = await supabase.from("zones").select("*").eq("team_id", teamId).order("name");
+    if (error) { toast.error("Impossibile caricare le zone."); return; }
     setItems((data ?? []) as Zone[]);
   }, [teamId]);
   useEffect(() => { load(); }, [load]);
@@ -355,7 +390,8 @@ function BottlesTab({ teamId, eventId }: { teamId: string; eventId: string }) {
   const [items, setItems] = useState<Bottle[]>([]);
   const [name, setName] = useState(""); const [price, setPrice] = useState("");
   const load = useCallback(async () => {
-    const { data } = await supabase.from("bottles").select("*").eq("event_id", eventId).order("price");
+    const { data, error } = await supabase.from("bottles").select("*").eq("event_id", eventId).order("price");
+    if (error) { toast.error("Impossibile caricare le bottiglie."); return; }
     setItems((data ?? []) as Bottle[]);
   }, [eventId]);
   useEffect(() => { load(); }, [load]);
@@ -412,10 +448,11 @@ function TablesTab({ teamId, eventId }: { teamId: string; eventId: string }) {
   const [people, setPeople] = useState("4"); const [zoneId, setZoneId] = useState<string>("");
 
   const load = useCallback(async () => {
-    const [{ data: t }, { data: z }] = await Promise.all([
+    const [{ data: t, error: tErr }, { data: z, error: zErr }] = await Promise.all([
       supabase.from("club_tables").select("id,ref_name,whatsapp,people_count,zone_id").eq("event_id", eventId).order("created_at"),
       supabase.from("zones").select("*").eq("team_id", teamId).order("name"),
     ]);
+    if (tErr || zErr) { toast.error("Impossibile caricare i tavoli."); return; }
     setItems((t ?? []) as ClubTable[]);
     setZones((z ?? []) as Zone[]);
     if (z && z.length > 0) setZoneId((c) => c || z[0].id);

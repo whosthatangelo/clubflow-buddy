@@ -36,31 +36,47 @@ function AnalyticsPage() {
   const [tables, setTables] = useState<TableRow[]>([]);
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (!teamId) return;
     (async () => {
-      const [{ data: e }, { data: f }, { data: o }, { data: t }, { data: z }] = await Promise.all([
+      const results = await Promise.all([
         supabase.from("events").select("id,name,date,headliner,format_id,status").eq("team_id", teamId).order("date", { ascending: true }),
         supabase.from("formats").select("id,name").eq("team_id", teamId),
         supabase.from("table_orders").select("event_id,table_id,bottles,total,created_at").eq("team_id", teamId),
         supabase.from("club_tables").select("id,event_id,people_count,zone_id").eq("team_id", teamId),
         supabase.from("zones").select("id,name").eq("team_id", teamId),
       ]);
+      // If any dataset failed, don't render charts computed from partial data.
+      if (results.some((r) => r.error)) {
+        setLoadError(true);
+        setLoading(false);
+        return;
+      }
+      const [{ data: e }, { data: f }, { data: o }, { data: t }, { data: z }] = results;
       setEvents((e ?? []) as EventRow[]);
       setFormats((f ?? []) as FormatRow[]);
       setOrders((o ?? []) as unknown as OrderRow[]);
       setTables((t ?? []) as TableRow[]);
       setZones((z ?? []) as ZoneRow[]);
+      setLoadError(false);
       setLoading(false);
     })();
   }, [teamId]);
 
   if (status === "loading") return <p className="p-6 text-muted-foreground">Caricamento…</p>;
+  if (status === "error") return <p className="p-6 text-destructive">Errore nel caricamento del team. Ricarica la pagina.</p>;
   if (!isAdmin) return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
       <h2 className="text-xl font-bold">Solo admin</h2>
       <Link to="/board" className="mt-4 inline-flex h-11 px-4 items-center rounded-xl bg-primary text-primary-foreground font-bold">Board</Link>
+    </div>
+  );
+  if (loadError) return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+      <h2 className="text-xl font-bold">Errore nel caricamento dei dati</h2>
+      <p className="mt-2 text-sm text-muted-foreground">Alcune statistiche non sono disponibili. Ricarica la pagina.</p>
     </div>
   );
 

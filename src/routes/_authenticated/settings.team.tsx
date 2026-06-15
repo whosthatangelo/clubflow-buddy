@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import {
   listTeamData,
   createInvite,
@@ -44,18 +43,11 @@ function TeamSettings() {
   const [newTeamName, setNewTeamName] = useState("");
   const [creatingTeam, setCreatingTeam] = useState(false);
 
-  const listFn = useServerFn(listTeamData);
-  const createInviteFn = useServerFn(createInvite);
-  const deleteInviteFn = useServerFn(deleteInvite);
-  const removeMemberFn = useServerFn(removeMember);
-  const changeRoleFn = useServerFn(changeMemberRole);
-  const createTeamFn = useServerFn(createTeam);
-
   const load = useCallback(async () => {
     if (!teamId) return;
     setLoading(true);
     try {
-      const res = await listFn({ data: { teamId } });
+      const res = await listTeamData({ teamId });
       setMembers(res.members as Member[]);
       setInvites(res.invites as Invite[]);
     } catch (err) {
@@ -63,13 +55,14 @@ function TeamSettings() {
     } finally {
       setLoading(false);
     }
-  }, [teamId, listFn]);
+  }, [teamId]);
 
   useEffect(() => {
     if (status === "ready" && isAdmin) load();
   }, [status, isAdmin, load]);
 
   if (status === "loading") return <p className="p-6 text-muted-foreground">Caricamento…</p>;
+  if (status === "error") return <p className="p-6 text-destructive">Errore nel caricamento del team. Ricarica la pagina.</p>;
   if (!isAdmin) {
     return (
       <div className="text-center py-12">
@@ -82,9 +75,7 @@ function TeamSettings() {
     if (!teamId) return;
     setSubmitting(true);
     try {
-      await createInviteFn({
-        data: { teamId, email: inviteEmail.trim() || undefined, role: inviteRole },
-      });
+      await createInvite({ teamId, email: inviteEmail.trim() || undefined, role: inviteRole });
       setInviteEmail("");
       toast.success("Invito creato");
       load();
@@ -111,7 +102,7 @@ function TeamSettings() {
     if (!teamId) return;
     if (!confirm(`Rimuovere ${m.name ?? m.email ?? "membro"}?`)) return;
     try {
-      await removeMemberFn({ data: { teamId, memberId: m.id } });
+      await removeMember({ teamId, memberId: m.id });
       toast.success("Rimosso");
       load();
     } catch (err) {
@@ -123,7 +114,7 @@ function TeamSettings() {
     if (!teamId) return;
     const newRole = m.role === "admin" ? "staff" : "admin";
     try {
-      await changeRoleFn({ data: { teamId, memberId: m.id, role: newRole } });
+      await changeMemberRole({ teamId, memberId: m.id, role: newRole });
       toast.success(`Ora ${m.name ?? "membro"} è ${newRole === "admin" ? "Admin" : "Staff"}`);
       load();
     } catch (err) {
@@ -134,7 +125,7 @@ function TeamSettings() {
   const removeInv = async (id: string) => {
     if (!teamId) return;
     try {
-      await deleteInviteFn({ data: { teamId, inviteId: id } });
+      await deleteInvite({ teamId, inviteId: id });
       toast.success("Invito eliminato");
       load();
     } catch (err) {
@@ -146,7 +137,7 @@ function TeamSettings() {
     if (newTeamName.trim().length < 2) return toast.error("Inserisci un nome valido");
     setCreatingTeam(true);
     try {
-      const result = await createTeamFn({ data: { name: newTeamName.trim() } });
+      const result = await createTeam({ name: newTeamName.trim() });
       setNewTeamName("");
       selectTeam(result.teamId);
       toast.success("Nuovo team creato");

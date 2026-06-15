@@ -4,12 +4,9 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
-  HeadContent,
-  Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect } from "react";
 
-import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -68,50 +65,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" },
-      { name: "theme-color", content: "#0a0a0a" },
-      { name: "apple-mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { name: "apple-mobile-web-app-title", content: "TableFlow" },
-      { title: "TableFlow — Gestione tavoli PR" },
-      { name: "description", content: "Gestione realtime tavoli per PR in discoteca." },
-      { property: "og:title", content: "TableFlow — Gestione tavoli PR" },
-      { name: "twitter:title", content: "TableFlow — Gestione tavoli PR" },
-      { property: "og:description", content: "Gestione realtime tavoli per PR in discoteca." },
-      { name: "twitter:description", content: "Gestione realtime tavoli per PR in discoteca." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a2b4c5b9-cefc-4e96-99f6-b8484a3dd8cf/id-preview-66d68bc7--7dc64277-0e12-49ac-9d88-8ec6f6e9c3f3.lovable.app-1781136727295.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a2b4c5b9-cefc-4e96-99f6-b8484a3dd8cf/id-preview-66d68bc7--7dc64277-0e12-49ac-9d88-8ec6f6e9c3f3.lovable.app-1781136727295.png" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { property: "og:type", content: "website" },
-    ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-      { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/icon-192.png" },
-    ],
-  }),
-  shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
 });
-
-function RootShell({ children }: { children: ReactNode }) {
-  return (
-    <html lang="it" className="dark">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  );
-}
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();

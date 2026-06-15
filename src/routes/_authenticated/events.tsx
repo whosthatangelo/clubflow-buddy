@@ -1,8 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { activateEvent, cloneEvent as cloneEventServer, createEvent } from "@/lib/team.functions";
+import { activateEvent, cloneEvent as cloneEventApi, createEvent } from "@/lib/team.functions";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
 import { BottomNav } from "@/components/BottomNav";
@@ -29,16 +28,18 @@ function EventsPage() {
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const activateEventFn = useServerFn(activateEvent);
-  const cloneEventFn = useServerFn(cloneEventServer);
-  const createEventFn = useServerFn(createEvent);
-
+  const [activatingId, setActivatingId] = useState<string | null>(null);
   const load = useCallback(async () => {
     if (!teamId) return;
-    const [{ data: e }, { data: f }] = await Promise.all([
+    const [{ data: e, error: eErr }, { data: f, error: fErr }] = await Promise.all([
       supabase.from("events").select("id,name,date,headliner,format_id,venue,status").eq("team_id", teamId).order("date", { ascending: false }),
       supabase.from("formats").select("id,name").eq("team_id", teamId).order("name"),
     ]);
+    if (eErr || fErr) {
+      toast.error("Impossibile caricare gli eventi. Riprova.");
+      setLoading(false);
+      return;
+    }
     setEvents((e ?? []) as EventRow[]);
     setFormats((f ?? []) as Format[]);
     setLoading(false);
@@ -46,13 +47,16 @@ function EventsPage() {
   useEffect(() => { if (teamId) load(); }, [teamId, load]);
 
   const setActive = async (id: string) => {
-    if (!teamId) return;
+    if (!teamId || activatingId) return; // ignore repeated taps while activating
+    setActivatingId(id);
     try {
-      await activateEventFn({ data: { teamId, eventId: id } });
+      await activateEvent({ teamId, eventId: id });
       toast.success("Evento attivato");
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Impossibile attivare l’evento");
+    } finally {
+      setActivatingId(null);
     }
   };
 
@@ -60,7 +64,7 @@ function EventsPage() {
     if (!teamId) return;
     if (!confirm(`Clonare "${ev.name}"?`)) return;
     try {
-      const newEvent = await cloneEventFn({ data: { teamId, eventId: ev.id } });
+      const newEvent = await cloneEventApi({ teamId, eventId: ev.id });
       toast.success("Evento clonato");
       navigate({ to: "/event/$id", params: { id: newEvent.id } });
     } catch (error) {
@@ -71,6 +75,7 @@ function EventsPage() {
   const signOut = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
 
   if (status === "loading") return <p className="p-6 text-muted-foreground">Caricamento…</p>;
+  if (status === "error") return <p className="p-6 text-destructive">Errore nel caricamento del team. Ricarica la pagina.</p>;
 
   const formatById = (id: string | null) => formats.find((f) => f.id === id)?.name;
   const active = events.find((e) => e.status === "active");
@@ -138,7 +143,7 @@ function EventsPage() {
                     <EventCard key={e.id} ev={e} format={formatById(e.format_id)}
                       onOpen={() => navigate({ to: "/event/$id", params: { id: e.id } })}
                       onClone={isAdmin ? () => cloneEvent(e) : undefined}
-                      action={isAdmin ? { label: "Attiva", icon: CheckCircle2, onClick: () => setActive(e.id) } : undefined} />
+                      action={isAdmin ? { label: activatingId === e.id ? "Attivazione…" : "Attiva", icon: CheckCircle2, onClick: () => setActive(e.id), disabled: activatingId !== null } : undefined} />
                   ))}
                 </div>
               </section>
@@ -171,7 +176,7 @@ function EventsPage() {
       </main>
 
       {creating && teamId && user && (
-        <NewEventSheet teamId={teamId} createEventFn={createEventFn}
+        <NewEventSheet teamId={teamId} createEventFn={createEvent}
           onClose={() => setCreating(false)}
           onCreated={async (id, activate) => {
             setCreating(false);
@@ -192,7 +197,7 @@ function EventCard({
   onOpen: () => void;
   onEdit?: () => void;
   onClone?: () => void;
-  action?: { label: string; icon: typeof Star; onClick: () => void };
+  action?: { label: string; icon: typeof Star; onClick: () => void; disabled?: boolean };
   primary?: boolean; muted?: boolean; primaryCta?: string;
 }) {
   return (
@@ -223,8 +228,8 @@ function EventCard({
           </button>
         )}
         {action && (
-          <button type="button" onClick={action.onClick}
-            className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm inline-flex items-center justify-center gap-2">
+          <button type="button" onClick={action.onClick} disabled={action.disabled}
+            className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60">
             <action.icon className="w-4 h-4" /> {action.label}
           </button>
         )}
@@ -248,7 +253,7 @@ function NewEventSheet({
   teamId, createEventFn, onClose, onCreated,
 }: {
   teamId: string;
-  createEventFn: (options: { data: { teamId: string; name: string; date: string; headliner: string | null; formatId: string | null; venue: string | null; notes: string | null } }) => Promise<{ id: string }>;
+  createEventFn: (input: { teamId: string; name: string; date: string; headliner: string | null; formatId: string | null; venue: string | null; notes: string | null }) => Promise<{ id: string }>;
   onClose: () => void;
   onCreated: (id: string, activate: boolean) => void;
 }) {
@@ -265,15 +270,13 @@ function NewEventSheet({
     setSubmitting(true);
     try {
       const data = await createEventFn({
-        data: {
-          teamId,
-          name: name.trim(),
-          date,
-          headliner: headliner.trim() || null,
-          formatId,
-          venue: venue.trim() || null,
-          notes: notes.trim() || null,
-        },
+        teamId,
+        name: name.trim(),
+        date,
+        headliner: headliner.trim() || null,
+        formatId,
+        venue: venue.trim() || null,
+        notes: notes.trim() || null,
       });
       toast.success("Evento creato");
       onCreated(data.id, activate);

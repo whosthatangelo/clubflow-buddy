@@ -1,1 +1,10 @@
 project_id = "hvvssnrtkhywxnaovuly"
+
+# Twilio inbound WhatsApp webhook — called by Twilio, not the app, so no Supabase JWT.
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+# Twilio credential test — called by the authenticated app; JWT is forwarded so
+# RLS can enforce that only team admins read the credentials.
+[functions.twilio-test]
+verify_jwt = true

@@ -1,12 +1,23 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { createTeam, createInvite } from "@/lib/team.functions";
 import { toast } from "sonner";
 import { ArrowRight, Check, Copy, LogOut, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
+  beforeLoad: async () => {
+    // If the user already belongs to a team, don't let them sit on the
+    // onboarding flow and bootstrap a duplicate team — send them to the board.
+    const { data, error } = await supabase
+      .from("team_members")
+      .select("team_id")
+      .eq("status", "active")
+      .limit(1);
+    if (!error && data && data.length > 0) {
+      throw redirect({ to: "/board" });
+    }
+  },
   component: OnboardingPage,
 });
 
@@ -28,15 +39,12 @@ function OnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
 
-  const createTeamFn = useServerFn(createTeam);
-  const createInviteFn = useServerFn(createInvite);
-
   const submitTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (teamName.trim().length < 2) return toast.error("Nome troppo corto");
     setSubmitting(true);
     try {
-      const res = await createTeamFn({ data: { name: teamName.trim() } });
+      const res = await createTeam({ name: teamName.trim() });
       setTeamId(res.teamId);
       setStep(2);
     } catch (err) {
@@ -50,8 +58,10 @@ function OnboardingPage() {
     if (!teamId) return;
     setSubmitting(true);
     try {
-      const inv = await createInviteFn({
-        data: { teamId, email: inviteEmail.trim() || undefined, role: "staff" },
+      const inv = await createInvite({
+        teamId,
+        email: inviteEmail.trim() || undefined,
+        role: "staff",
       });
       setInvites((prev) => [...prev, inv as InviteRow]);
       setInviteEmail("");

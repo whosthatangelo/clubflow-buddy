@@ -26,7 +26,11 @@ export function ReorderSheet({
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from("bottles").select("id,name,price").eq("event_id", eventId).order("price");
+      const { data, error } = await supabase.from("bottles").select("id,name,price").eq("event_id", eventId).order("price");
+      if (error) {
+        toast.error("Impossibile caricare il listino bottiglie.");
+        return;
+      }
       setCatalog((data ?? []) as BottleListItem[]);
     })();
   }, [eventId]);

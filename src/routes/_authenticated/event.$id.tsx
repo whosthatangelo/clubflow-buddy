@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { activateEvent } from "@/lib/team.functions";
 import { useCurrentTeam } from "@/hooks/use-current-team";
 import { FormatSelect } from "@/components/FormatSelect";
 import { ArrowLeft, Trash2, CheckCircle2, Archive, Copy, Plus, Play, Settings as SettingsIcon, Users } from "lucide-react";
@@ -31,6 +33,7 @@ function EventDetailPage() {
   const [ev, setEv] = useState<EventRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("details");
+  const activateEventFn = useServerFn(activateEvent);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("events").select("*").eq("id", id).maybeSingle();
@@ -52,10 +55,12 @@ function EventDetailPage() {
 
   const activate = async () => {
     if (!ev || !teamId) return;
-    await supabase.from("events").update({ status: "archived" }).eq("team_id", teamId).eq("status", "active");
-    const { error } = await supabase.from("events").update({ status: "active" }).eq("id", ev.id);
-    if (error) return toast.error(error.message);
-    navigate({ to: "/board" });
+    try {
+      await activateEventFn({ data: { teamId, eventId: ev.id } });
+      navigate({ to: "/board" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossibile attivare l’evento");
+    }
   };
 
   const archive = async () => {

@@ -165,8 +165,9 @@ export const createEvent = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await getAdminContext(supabase, userId, data.teamId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: event, error } = await supabase
+    const { data: event, error } = await supabaseAdmin
       .from("events")
       .insert({
         team_id: data.teamId,
@@ -183,17 +184,17 @@ export const createEvent = createServerFn({ method: "POST" })
       .single();
     if (error || !event) throw new Error("Impossibile creare l’evento. Verifica il team attivo e riprova.");
 
-    const { data: members, error: membersError } = await supabase
+    const { data: members, error: membersError } = await supabaseAdmin
       .from("team_members")
       .select("user_id")
       .eq("team_id", data.teamId)
       .eq("status", "active");
     if (membersError) {
-      await supabase.from("events").delete().eq("id", event.id);
+      await supabaseAdmin.from("events").delete().eq("id", event.id);
       throw new Error("Evento non creato: impossibile caricare lo staff del team.");
     }
     if (members && members.length > 0) {
-      const { error: assignmentError } = await supabase.from("event_members").insert(
+      const { error: assignmentError } = await supabaseAdmin.from("event_members").insert(
         members.map((member) => ({
           team_id: data.teamId,
           event_id: event.id,
@@ -201,7 +202,7 @@ export const createEvent = createServerFn({ method: "POST" })
         })),
       );
       if (assignmentError) {
-        await supabase.from("events").delete().eq("id", event.id);
+        await supabaseAdmin.from("events").delete().eq("id", event.id);
         throw new Error("Evento non creato: impossibile assegnare lo staff.");
       }
     }
@@ -216,7 +217,8 @@ export const activateEvent = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await getAdminContext(supabase, userId, data.teamId);
-    const { data: target } = await supabase
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: target } = await supabaseAdmin
       .from("events")
       .select("id")
       .eq("id", data.eventId)
@@ -224,7 +226,7 @@ export const activateEvent = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!target) throw new Error("Evento non trovato nel team attivo.");
 
-    const { data: previous } = await supabase
+    const { data: previous } = await supabaseAdmin
       .from("events")
       .select("id")
       .eq("team_id", data.teamId)
@@ -232,12 +234,12 @@ export const activateEvent = createServerFn({ method: "POST" })
       .neq("id", data.eventId)
       .maybeSingle();
     if (previous) {
-      const { error } = await supabase.from("events").update({ status: "archived" }).eq("id", previous.id);
+      const { error } = await supabaseAdmin.from("events").update({ status: "archived" }).eq("id", previous.id);
       if (error) throw new Error("Impossibile chiudere l’evento attivo.");
     }
-    const { error } = await supabase.from("events").update({ status: "active" }).eq("id", data.eventId);
+    const { error } = await supabaseAdmin.from("events").update({ status: "active" }).eq("id", data.eventId);
     if (error) {
-      if (previous) await supabase.from("events").update({ status: "active" }).eq("id", previous.id);
+      if (previous) await supabaseAdmin.from("events").update({ status: "active" }).eq("id", previous.id);
       throw new Error("Impossibile attivare l’evento. Riprova.");
     }
     return { ok: true };
